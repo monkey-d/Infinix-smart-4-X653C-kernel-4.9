@@ -567,8 +567,9 @@ static int tpd_probe(struct platform_device *pdev)
 		|| strncmp(CONFIG_MTK_LCM_PHYSICAL_ROTATION, "270", 3) == 0) {
 #ifdef CONFIG_MTK_FB
 /*Fix build errors,as some projects  cannot support these apis while bring up*/
-		TPD_RES_Y = DISP_GetScreenWidth();
-		TPD_RES_X = DISP_GetScreenHeight();
+		TPD_RES_X = 720;
+		TPD_RES_Y = 1600;
+		printk("TPD: Forced resolution to %lu x %lu\n", TPD_RES_X, TPD_RES_Y);
 #endif
 	} else
     #endif
