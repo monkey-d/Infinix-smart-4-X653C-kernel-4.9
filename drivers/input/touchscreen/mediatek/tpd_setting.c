@@ -44,8 +44,7 @@ int tpd_mode_axis;
 int tpd_mode_min = 800;		/* TPD_RES_Y/2; */
 int tpd_mode_max = 1600;		/* TPD_RES_Y; */
 /* TPD_RES_X*TPD_RES_X/1600; */
-int tpd_mode_keypad_tolerance = 4
-720* 720 / 1600;
+int tpd_mode_keypad_tolerance = 720 * 720 / 1600;
 module_param(tpd_mode, int, 0664);
 module_param(tpd_mode_axis, int, 0664);
 module_param(tpd_mode_min, int, 0664);
