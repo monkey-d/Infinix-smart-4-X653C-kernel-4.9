@@ -45,11 +45,11 @@
 	__func__, __LINE__, ##args)
 
 //---Input device info.---
-#define NVT_TS_NAME "NVTCapacitiveTouchScreen"
+#define NVT_TS_NAME "mtk-tpd"
 
 //---Touch info.---
-#define TOUCH_DEFAULT_MAX_WIDTH 1080
-#define TOUCH_DEFAULT_MAX_HEIGHT 1920
+#define TOUCH_DEFAULT_MAX_WIDTH 720
+#define TOUCH_DEFAULT_MAX_HEIGHT 1600
 #define TOUCH_MAX_FINGER_NUM 10
 #define TOUCH_KEY_NUM 0
 #if TOUCH_KEY_NUM > 0
