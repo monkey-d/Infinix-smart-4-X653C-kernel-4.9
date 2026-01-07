@@ -478,6 +478,49 @@
 		linux,phandle = <0x37>;
 		phandle = <0x37>;
 
+		ctp_pins_default: ctp_default {
+		};
+
+		ctp_pins_eint_as_int: ctp_eint_as_int {
+			pins_cmd_dat {
+				pinmux = <0x0400>; /* GPIO 4 Mode 0 (EINT) */
+				slew-rate = <0>;
+				bias-disable;
+			};
+		};
+
+		ctp_pins_eint_output0: ctp_eint_output0 {
+			pins_cmd_dat {
+				pinmux = <0x0400>;
+				slew-rate = <1>;
+				output-low;
+			};
+		};
+
+		ctp_pins_eint_output1: ctp_eint_output1 {
+			pins_cmd_dat {
+				pinmux = <0x0400>;
+				slew-rate = <1>;
+				output-high;
+			};
+		};
+
+		ctp_pins_rst_output0: ctp_rst_output0 {
+			pins_cmd_dat {
+				pinmux = <0xae00>; /* GPIO 174 (0xAE) Mode 0 */
+				slew-rate = <1>;
+				output-low;
+			};
+		};
+
+		ctp_pins_rst_output1: ctp_rst_output1 {
+			pins_cmd_dat {
+				pinmux = <0xae00>;
+				slew-rate = <1>;
+				output-high;
+			};
+		};
+
 		msdc0@default {
 			linux,phandle = <0x2d>;
 			phandle = <0x2d>;
@@ -1174,6 +1217,25 @@
 		compatible = "mediatek,touch";
 		linux,phandle = <0x71>;
 		phandle = <0x71>;
+
+		/* Novatek Configuration */
+		tpd-resolution = <720 1600>;
+		use-tpd-button = <1>;
+		tpd-key-num = <3>;
+		tpd-key-local = <139 172 158 0>; /* MENU, HOMEPAGE, BACK */
+		tpd-key-dim-local = <90 883 100 40 230 883 100 40 370 883 100 40 0 0 0 0>;
+		tpd-max-touch-num = <5>;
+		tpd-filter-pixel-density = <146>;
+		
+		/* Pin Control Mapping */
+		pinctrl-names = "default", "state_eint_as_int", "state_eint_output0", "state_eint_output1", "state_rst_output0", "state_rst_output1";
+		pinctrl-0 = <&ctp_pins_default>;
+		pinctrl-1 = <&ctp_pins_eint_as_int>;
+		pinctrl-2 = <&ctp_pins_eint_output0>;
+		pinctrl-3 = <&ctp_pins_eint_output1>;
+		pinctrl-4 = <&ctp_pins_rst_output0>;
+		pinctrl-5 = <&ctp_pins_rst_output1>;
+		status = "okay";
 	};
 
 	accdet {
@@ -2102,6 +2164,16 @@
 		mediatek,hs_only;
 		linux,phandle = <0x7a>;
 		phandle = <0x7a>;
+
+		cap_touch@62 {
+			compatible = "mediatek,cap_touch";
+			reg = <0x62>;
+			interrupt-parent = <&pio>;
+			interrupts = <4 2 4 0>; /* GPIO 4, Falling Edge */
+			rst-gpio = <&pio 174 0>;
+			int-gpio = <&pio 4 0>;
+			status = "okay";
+		};
 	};
 
 	i2c1@11008000 {
