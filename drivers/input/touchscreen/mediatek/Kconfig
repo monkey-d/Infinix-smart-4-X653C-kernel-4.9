@@ -81,5 +81,6 @@ config TOUCHSCREEN_MTK_NT36xxx
 
 source "drivers/input/touchscreen/mediatek/NT36xxx/Kconfig"
 
+source "drivers/input/touchscreen/mediatek/nt36572_common/Kconfig"
 
 endif
