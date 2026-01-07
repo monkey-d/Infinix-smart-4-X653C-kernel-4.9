@@ -40,7 +40,7 @@ jobs:
       run: |
         echo "Cloning Toolchain..."
         # Using LineageOS mirror for stability (Prebuilt GCC 4.9 ARM-EABI)
-        git clone --depth=1 https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_arm_arm-eabi-4.9.git toolchain
+        git clone https://github.com/burstlam/arm-eabi-4.9.git toolchain
         
         # Add toolchain bin to GITHUB_PATH so following steps can use it
         echo "$GITHUB_WORKSPACE/toolchain/bin" >> $GITHUB_PATH
