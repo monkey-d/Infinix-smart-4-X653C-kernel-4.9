@@ -74,9 +74,9 @@ extern void Boot_Update_Firmware(struct work_struct *work);
 
 #if TOUCH_KEY_NUM > 0
 const uint16_t touch_key_array[TOUCH_KEY_NUM] = {
-	KEY_BACK,
+	KEY_MENU,
 	KEY_HOME,
-	KEY_MENU
+	KEY_BACK
 };
 #endif
 
