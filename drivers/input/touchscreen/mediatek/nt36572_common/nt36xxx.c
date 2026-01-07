@@ -20,6 +20,7 @@
 #include <linux/delay.h>
 #include <linux/interrupt.h>
 #include <linux/gpio.h>
+#include <linux/of_gpio.h>
 #include <linux/proc_fs.h>
 #include <asm/uaccess.h>
 #include <linux/input/mt.h>
@@ -464,15 +465,23 @@ return:
 *******************************************************/
 void nvt_bootloader_reset(void)
 {
-	uint8_t buf[8] = {0};
+    // 1. Physical Reset (Toggle GPIO)
+    if (gpio_is_valid(ts->reset_gpio)) {
+        NVT_LOG("Performing GPIO Hardware Reset\n");
+        gpio_set_value(ts->reset_gpio, 1); // High
+        msleep(10);
+        gpio_set_value(ts->reset_gpio, 0); // Low (Reset State)
+        msleep(20);
+        gpio_set_value(ts->reset_gpio, 1); // High (Release Reset)
+        msleep(50); // Wait for chip to boot
+    }
 
-	//---write i2c cmds to reset---
-	buf[0] = 0x00;
-	buf[1] = 0x69;
-	CTP_I2C_WRITE(ts->client, I2C_HW_Address, buf, 2);
-
-	// need 35ms delay after bootloader reset
-	msleep(35);
+    // 2. Software Reset (Existing I2C Command)
+    uint8_t buf[8] = {0};
+    buf[0] = 0x00;
+    buf[1] = 0x69;
+    CTP_I2C_WRITE(ts->client, I2C_HW_Address, buf, 2);
+    msleep(35);
 }
 
 /*******************************************************
@@ -1415,29 +1424,59 @@ Description:
 return:
 	Executive outcomes. 0---succeed. negative---failed
 *******************************************************/
+
 static int32_t nvt_ts_probe(struct i2c_client *client, const struct i2c_device_id *id)
 {
-	int32_t ret = 0;
-#if ((TOUCH_KEY_NUM > 0) || WAKEUP_GESTURE)
-	int32_t retry = 0;
-#endif
+    int32_t ret = 0;
+    struct regulator *vcc_touch; // Power regulator
 
-	NVT_LOG("start\n");
+    NVT_LOG("start probe (Manual Mode)\n");
 
-	ts = kmalloc(sizeof(struct nvt_ts_data), GFP_KERNEL);
-	if (ts == NULL) {
-		NVT_ERR("failed to allocated memory for nvt ts data\n");
-		return -ENOMEM;
-	}
+    // 1. MANUALLY ENABLE POWER (Since DTS pinctrl was skipped)
+    vcc_touch = regulator_get(&client->dev, "vtouch"); // Try 'vtouch' or 'vgp1'
+    if (!IS_ERR(vcc_touch)) {
+        regulator_set_voltage(vcc_touch, 2800000, 2800000); // Set to 2.8V
+        regulator_enable(vcc_touch);
+        NVT_LOG("Manual Power: Enabled vtouch regulator\n");
+    } else {
+        NVT_LOG("Manual Power: Could not find regulator, assuming always-on\n");
+    }
 
-	ts->client = client;
-	i2c_set_clientdata(client, ts);
+    ts = kmalloc(sizeof(struct nvt_ts_data), GFP_KERNEL);
+    if (ts == NULL) {
+        return -ENOMEM;
+    }
 
-#if NVT_TOUCH_SUPPORT_HW_RST
-	NVT_GPIO_OUTPUT(GTP_RST_PORT, 1);
-#endif
-	//---request INT-pin---
-	NVT_GPIO_AS_INT(GTP_INT_PORT);
+    ts->client = client;
+    i2c_set_clientdata(client, ts);
+
+    // 2. MANUALLY FIND GPIOs (Bypassing TPD struct)
+    // We look for "rst-gpio" directly in the I2C node
+    ts->reset_gpio = of_get_named_gpio(client->dev.of_node, "rst-gpio", 0);
+    if (gpio_is_valid(ts->reset_gpio)) {
+        ret = gpio_request(ts->reset_gpio, "nvt_reset");
+        if (ret == 0) {
+            gpio_direction_output(ts->reset_gpio, 1); // Set Output High
+            NVT_LOG("Manual GPIO: Reset Pin %d requested\n", ts->reset_gpio);
+        }
+    } else {
+        // Fallback: If not in I2C node, check if TPD global structure has it
+        if (tpd && gpio_is_valid(tpd->rst_gpio)) {
+             ts->reset_gpio = tpd->rst_gpio;
+             gpio_request(ts->reset_gpio, "nvt_reset");
+             gpio_direction_output(ts->reset_gpio, 1);
+             NVT_LOG("Manual GPIO: Found Reset %d in TPD struct\n", ts->reset_gpio);
+        } else {
+             NVT_ERR("Manual GPIO: Failed to find Reset Pin!\n");
+        }
+    }
+
+    // 3. GET INTERRUPT PIN
+    ts->irq_gpio = of_get_named_gpio(client->dev.of_node, "int-gpio", 0);
+    if (gpio_is_valid(ts->irq_gpio)) {
+        gpio_request(ts->irq_gpio, "nvt_irq");
+        gpio_direction_input(ts->irq_gpio);
+    }
 
 	//---check i2c func.---
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
