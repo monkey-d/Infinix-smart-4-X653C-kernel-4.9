@@ -18,6 +18,7 @@
 // ---------------------------------------------------------------------------
 //  Local Variables
 // ---------------------------------------------------------------------------
+// Add this function before the LCM_DRIVER struct
 
 static struct LCM_UTIL_FUNCS lcm_util = { 0 };
 
@@ -107,10 +108,14 @@ static void lcm_get_params(struct LCM_PARAMS *params) {
     params->type = LCM_TYPE_DSI;
     params->width = FRAME_WIDTH;
     params->height = FRAME_HEIGHT;
+    
+    // VIDEO MODE SETTINGS
     params->dsi.mode = SYNC_PULSE_VDO_MODE;
-    params->dsi.LANE_NUM = LCM_THREE_LANE; 
+    params->dsi.LANE_NUM = LCM_THREE_LANE;
     params->dsi.data_format.format = LCM_DSI_FORMAT_RGB888;
     params->dsi.PS = LCM_PACKED_PS_24BIT_RGB888;
+    
+    // TIMING
     params->dsi.vertical_sync_active = 2;
     params->dsi.vertical_backporch = 254;
     params->dsi.vertical_frontporch = 10;
@@ -119,14 +124,30 @@ static void lcm_get_params(struct LCM_PARAMS *params) {
     params->dsi.horizontal_backporch = 44;
     params->dsi.horizontal_frontporch = 8;
     params->dsi.horizontal_active_pixel = FRAME_WIDTH;
-    params->dsi.PLL_CLOCK = 360; 
+    params->dsi.PLL_CLOCK = 360;
+
+    // --- SCRCPY / BLACK SCREEN FIXES ---
+    // Force DSI clock to run continuously. 
+    // This allows the encoder to grab frames even if the panel is idle.
+    params->dsi.cont_clock = 1; 
+    params->dsi.non_cont_clock = 0;
+    params->dsi.non_cont_clock_period = 0;
+    
+    // --- PMIC / STABILITY FIXES ---
+    // Ensure ESD checking is enabled in the parameters (even if callback is simple)
+    params->dsi.esd_check_enable = 1;
+    params->dsi.customization_esd_check_enable = 1;
+    params->dsi.lcm_esd_check_table[0].cmd = 0x0A; // Read Power Mode
+    params->dsi.lcm_esd_check_table[0].count = 1;
+    params->dsi.lcm_esd_check_table[0].para_list[0] = 0x9C; // Expect 0x9C (Normal)
 }
+
 
 static void lcm_init(void) {
     SET_RESET_PIN(0);
-    MDELAY(10);
+    MDELAY(20);
     SET_RESET_PIN(1);
-    MDELAY(10);
+    MDELAY(20);
     push_table(init_setting_vdo, sizeof(init_setting_vdo) / sizeof(struct LCM_setting_table), 1);
 }
 
@@ -138,6 +159,29 @@ static void lcm_resume(void) {
     lcm_init();
 }
 
+// Add this function before the LCM_DRIVER struct
+static int lcm_compare_id(void)
+{
+    unsigned char buffer[4] = {0};
+    unsigned int array[16];
+
+    // Read ID from Register 0x04 (Manufacturer ID) or 0xDA/0xDB
+    // 0x04 is standard for Novatek: returns ID1, ID2, ID3
+    array[0] = 0x00043700; // Read 4 bytes from 0x04
+    dsi_set_cmdq(array, 1, 1);
+    
+    // Read 3 bytes back
+    lcm_util.dsi_read_cmd_dts(0x04, 3, buffer);
+
+    // Debug log to see what your ID actually is (Check dmesg!)
+    LCM_LOG("Check ID: 0x%02x 0x%02x 0x%02x\n", buffer[0], buffer[1], buffer[2]);
+
+    // NT36525 usually returns 0x36 0x52 0x5B or similar.
+    // If you don't know the ID yet, return 1 to force it to load, 
+    // then check dmesg logs later to set the correct values.
+    return 1; 
+}
+
 struct LCM_DRIVER nt36525b_hdp_dsi_vdo_txd_mt_x653c_lcm_drv = {
     .name = "nt36525b_hdp_dsi_vdo_txd_mt_x653c",
     .set_util_funcs = lcm_set_util_funcs,
@@ -145,4 +189,6 @@ struct LCM_DRIVER nt36525b_hdp_dsi_vdo_txd_mt_x653c_lcm_drv = {
     .init = lcm_init,
     .suspend = lcm_suspend,
     .resume = lcm_resume,
+    .compare_id = lcm_compare_id,
+
 };
