@@ -15,11 +15,6 @@
  * more details.
  *
  */
-#include <linux/of_gpio.h>
-// GPIOs from your DTS log
-#define FORCE_RST_PIN 174
-#define FORCE_INT_PIN 4
-
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/delay.h>
@@ -79,9 +74,9 @@ extern void Boot_Update_Firmware(struct work_struct *work);
 
 #if TOUCH_KEY_NUM > 0
 const uint16_t touch_key_array[TOUCH_KEY_NUM] = {
-	KEY_MENU,
+	KEY_BACK,
 	KEY_HOME,
-	KEY_BACK
+	KEY_MENU
 };
 #endif
 
@@ -1438,29 +1433,11 @@ static int32_t nvt_ts_probe(struct i2c_client *client, const struct i2c_device_i
 	ts->client = client;
 	i2c_set_clientdata(client, ts);
 
-// --- START MANUAL GPIO HACK ---
-    printk("[NVT-ts] FORCE REQUESTING GPIOs...\n");
-    
-    // 1. Request Reset GPIO
-    if (gpio_request(FORCE_RST_PIN, "nt36xxx_rst") < 0) {
-        printk("[NVT-ts] Failed to request RST GPIO %d (might be busy, trying to use anyway)\n", FORCE_RST_PIN);
-    }
-    
-    // 2. Perform Hardware Reset Sequence (Low -> High)
-    gpio_direction_output(FORCE_RST_PIN, 1); // Start High
-    msleep(10);
-    gpio_direction_output(FORCE_RST_PIN, 0); // Pull Low (Reset)
-    msleep(20);                              // Hold Reset
-    gpio_direction_output(FORCE_RST_PIN, 1); // Release High
-    msleep(50);                              // Wait for boot
-    printk("[NVT-ts] Hardware Reset Done on GPIO %d\n", FORCE_RST_PIN);
-
-    // 3. Request Interrupt GPIO
-    if (gpio_request(FORCE_INT_PIN, "nt36xxx_int") < 0) {
-        printk("[NVT-ts] Failed to request INT GPIO %d\n", FORCE_INT_PIN);
-    }
-    gpio_direction_input(FORCE_INT_PIN);
-    // --- END MANUAL GPIO HACK ---
+#if NVT_TOUCH_SUPPORT_HW_RST
+	NVT_GPIO_OUTPUT(GTP_RST_PORT, 1);
+#endif
+	//---request INT-pin---
+	NVT_GPIO_AS_INT(GTP_INT_PORT);
 
 	//---check i2c func.---
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {

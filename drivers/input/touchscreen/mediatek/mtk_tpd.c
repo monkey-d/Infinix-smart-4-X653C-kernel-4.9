@@ -527,10 +527,8 @@ static void tpd_create_attributes(struct device *dev, struct tpd_attrs *attrs)
 {
 	int num = attrs->num;
 
-	for (; num > 0;) {
-		if (device_create_file(dev, attrs->attr[--num]))
-			pr_info("mtk_tpd: tpd create attributes file failed\n");
-	}
+	for (; num > 0;)
+		device_create_file(dev, attrs->attr[--num]);
 }
 
 /* touch panel probe */

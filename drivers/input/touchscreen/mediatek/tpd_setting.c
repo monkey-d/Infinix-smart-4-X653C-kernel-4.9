@@ -13,8 +13,8 @@
 
 #include "tpd.h"
 
-unsigned long TPD_RES_X = 720;
-unsigned long TPD_RES_Y = 1600;
+unsigned long TPD_RES_X = 480;
+unsigned long TPD_RES_Y = 800;
 
 /* #if (defined(TPD_HAVE_CALIBRATION) && !defined(TPD_CUSTOM_CALIBRATION)) */
 int tpd_calmat[8] = { 0 };

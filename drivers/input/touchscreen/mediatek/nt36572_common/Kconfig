@@ -1,5 +1,15 @@
-config TOUCHSCREEN_MTK_NT36572_COMMON
-    bool "Novatek NT36572 Touchscreen Driver"
-    depends on TOUCHSCREEN_MTK
-    help
-      This enables support for the Novatek NT36572 touchscreen.
+#
+# Novatek NT36xxx touchscreen driver configuration
+#
+if TOUCHSCREEN_MTK_NT36xxx
+
+config TOUCHSCREEN_NT36xxx
+	bool "Novatek NT36xxx"
+	default y
+	help
+	  Say Y here if you have a Novatek NT36xxx touchscreen connected
+	  to your system.
+
+	  If unsure, say N.
+
+endif
