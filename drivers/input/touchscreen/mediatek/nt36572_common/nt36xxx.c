@@ -658,10 +658,12 @@ info_retry:
 	ts->abs_y_max = (uint16_t)((buf[7] << 8) | buf[8]);
 	ts->max_button_num = buf[11];
 
-	//---Override incorrect firmware resolution (720x1536 -> 720x1600)---
-	if (ts->abs_x_max == 720 && ts->abs_y_max == 1536) {
-		NVT_LOG("Overriding firmware resolution from 720x1536 to 720x1600\n");
-		ts->abs_y_max = 1600;
+	/* Override incorrect firmware resolution (720x1536 -> 720x1600) */
+	if (ts->abs_x_max == TOUCH_DEFAULT_MAX_WIDTH && ts->abs_y_max == TOUCH_FIRMWARE_INCORRECT_HEIGHT) {
+		NVT_LOG("Overriding firmware resolution from %dx%d to %dx%d\n",
+			TOUCH_DEFAULT_MAX_WIDTH, TOUCH_FIRMWARE_INCORRECT_HEIGHT,
+			TOUCH_DEFAULT_MAX_WIDTH, TOUCH_DEFAULT_MAX_HEIGHT);
+		ts->abs_y_max = TOUCH_DEFAULT_MAX_HEIGHT;
 	}
 
 	//---clear x_num, y_num if fw info is broken---
@@ -1407,7 +1409,7 @@ static int8_t nvt_ts_check_chip_ver_trim(void)
 			nvt_stop_crc_reboot();
 		}
 
-		// Increase delay between retries to allow chip to stabilize
+		/* Increase delay between retries to allow chip to stabilize */
 		msleep(50);
 	}
 
@@ -1453,8 +1455,8 @@ static int32_t nvt_ts_probe(struct i2c_client *client, const struct i2c_device_i
 		goto err_check_functionality_failed;
 	}
 
-	// need delay after POR(power on reset) to ensure touch controller is ready
-	// Increased from 10ms to 100ms to allow proper firmware boot
+	/* need delay after POR(power on reset) to ensure touch controller is ready */
+	/* Increased from 10ms to 100ms to allow proper firmware boot */
 	msleep(100);
 
 	//---check input device---
@@ -1508,11 +1510,11 @@ static int32_t nvt_ts_probe(struct i2c_client *client, const struct i2c_device_i
 	nvt_bootloader_reset();
 	ret = nvt_check_fw_reset_state(RESET_STATE_INIT);
 	if (ret) {
-		NVT_ERR("Failed to check firmware reset state\n");
+		NVT_ERR("Failed to check firmware reset state, continuing with defaults\n");
 	}
 	ret = nvt_get_fw_info();
 	if (ret) {
-		NVT_ERR("Failed to get firmware info\n");
+		NVT_ERR("Failed to get firmware info, using default parameters\n");
 	}
 	mutex_unlock(&ts->lock);
 	NVT_LOG("Bootloader reset and firmware initialization complete\n");

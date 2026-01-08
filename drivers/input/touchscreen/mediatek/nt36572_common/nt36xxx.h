@@ -52,6 +52,7 @@
 //---Touch info.---
 #define TOUCH_DEFAULT_MAX_WIDTH 720
 #define TOUCH_DEFAULT_MAX_HEIGHT 1600
+#define TOUCH_FIRMWARE_INCORRECT_HEIGHT 1536  /* Incorrect height reported by firmware */
 #define TOUCH_MAX_FINGER_NUM 10
 #define TOUCH_KEY_NUM 0
 #if TOUCH_KEY_NUM > 0
