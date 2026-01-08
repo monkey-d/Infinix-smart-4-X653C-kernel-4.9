@@ -1,13 +1,13 @@
 #
-# Novatek NT36xxx touchscreen driver configuration
+# Novatek NT36572_COMMON touchscreen driver configuration
 #
-if TOUCHSCREEN_MTK_NT36xxx
+if TOUCHSCREEN_MTK_NT36572_COMMON
 
-config TOUCHSCREEN_NT36xxx
-	bool "Novatek NT36xxx"
+config TOUCHSCREEN_NT36572_COMMON
+	bool "Novatek NT36572_COMMON"
 	default y
 	help
-	  Say Y here if you have a Novatek NT36xxx touchscreen connected
+	  Say Y here if you have a Novatek NT36572_COMMON touchscreen connected
 	  to your system.
 
 	  If unsure, say N.
