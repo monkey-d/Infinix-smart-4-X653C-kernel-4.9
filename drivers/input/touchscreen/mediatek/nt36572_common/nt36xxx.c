@@ -658,6 +658,12 @@ info_retry:
 	ts->abs_y_max = (uint16_t)((buf[7] << 8) | buf[8]);
 	ts->max_button_num = buf[11];
 
+	//---Override incorrect firmware resolution (720x1536 -> 720x1600)---
+	if (ts->abs_x_max == 720 && ts->abs_y_max == 1536) {
+		NVT_LOG("Overriding firmware resolution from 720x1536 to 720x1600\n");
+		ts->abs_y_max = 1600;
+	}
+
 	//---clear x_num, y_num if fw info is broken---
 	if ((buf[1] + buf[2]) != 0xFF) {
 		NVT_ERR("FW info is broken! fw_ver=0x%02X, ~fw_ver=0x%02X\n", buf[1], buf[2]);
