@@ -3,6 +3,10 @@ name: Manual Kernel Build (ARM 32-bit)
 on:
   workflow_dispatch:
     inputs:
+      kernel_branch:
+        description: 'Kernel source branch to build'
+        required: true
+        default: 'integrate-touchscreen-driver'
       defconfig_name:
         description: 'Name of the defconfig file (inside arch/arm/configs/)'
         required: true
@@ -18,6 +22,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         repository: monkey-d/inifnix-smart-4_x653c-kernel-source
+        ref: ${{ github.event.inputs.kernel_branch }}
         path: kernel_source
 
     # 2. Install dependencies
@@ -45,19 +50,12 @@ jobs:
         ARCH: arm
         CROSS_COMPILE: arm-eabi-
       run: |
-        echo "Verifying GCC Version..."
+        echo "Building branch: ${{ github.event.inputs.kernel_branch }}"
         arm-eabi-gcc --version
-        
-        echo "Cleaning build tree..."
+
         make clean && make mrproper
-        
-        echo "Applying defconfig: ${{ github.event.inputs.defconfig_name }}..."
         make ${{ github.event.inputs.defconfig_name }}
-        
-        echo "Starting Build..."
-        # Build zImage-dtb AND dtbs (Device Tree Blobs)
-        # Note: On many MTK kernels, 'dtboimage' is a separate target. 
-        # We try to build it; if the target doesn't exist, '|| true' prevents the workflow from failing.
+
         make -j$(nproc --all) zImage-dtb dtbs
         make -j$(nproc --all) dtboimage || true
 
@@ -66,28 +64,13 @@ jobs:
       working-directory: kernel_source
       run: |
         mkdir -p build_artifacts
-        
-        echo "Copying Kernel Images..."
-        # Copy zImage-dtb if it exists
         [ -f arch/arm/boot/zImage-dtb ] && cp arch/arm/boot/zImage-dtb build_artifacts/
-        # Copy standard zImage
         [ -f arch/arm/boot/zImage ] && cp arch/arm/boot/zImage build_artifacts/
-        
-        echo "Copying Device Tree Blobs (dtb)..."
-        # Copy all compiled .dtb files
         find arch/arm/boot/dts -name "*.dtb" -exec cp {} build_artifacts/ \;
-        
-        echo "Copying DTBO image..."
-        # Find and copy dtbo.img (location varies by kernel version, using find to be safe)
         find . -name "dtbo.img" -exec cp {} build_artifacts/ \;
-        
-        echo "Copying Debugging Info..."
-        # Copy config and System.map for debugging purposes
         cp .config build_artifacts/build_config
         [ -f System.map ] && cp System.map build_artifacts/
         [ -f Module.symvers ] && cp Module.symvers build_artifacts/
-
-        echo "Listing Artifacts:"
         ls -lh build_artifacts/
 
     # 6. Upload the result
