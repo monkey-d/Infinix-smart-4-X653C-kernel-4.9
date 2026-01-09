@@ -537,19 +537,76 @@ Description:
 return:
 	n.a.
 *******************************************************/
+// Replace the existing nvt_bootloader_reset function
 void nvt_bootloader_reset(void)
 {
-	uint8_t buf[8] = {0};
+    uint8_t buf[8] = {0};
+    int retry = 0;
 
-	//---write i2c cmds to reset---
-	buf[0] = 0x00;
-	buf[1] = 0x69;
-	CTP_I2C_WRITE(ts->client, I2C_HW_Address, buf, 2);
+    NVT_LOG("++\n");
 
-	// need 35ms delay after bootloader reset
-	msleep(35);
+    /* Perform hardware reset first */
+    nvt_gpio_set_reset(0);
+    msleep(20);  /* Increased from 10ms */
+    nvt_gpio_set_reset(1);
+    msleep(50);  /* Increased delay after reset */
+
+    /* Send software reset command with retry */
+    for (retry = 0; retry < 5; retry++) {
+        //---set xdata index to EVENT BUF ADDR---
+        buf[0] = 0xFF;
+        buf[1] = (ts->mmap->EVENT_BUF_ADDR >> 16) & 0xFF;
+        buf[2] = (ts->mmap->EVENT_BUF_ADDR >> 8) & 0xFF;
+        if (CTP_I2C_WRITE(ts->client, I2C_FW_Address, buf, 3) >= 0)
+            break;
+        msleep(10);
+    }
+
+    if (retry >= 5) {
+        NVT_ERR("Failed to set xdata index after reset\n");
+        return;
+    }
+
+    //---write RESET_STATE_INIT to EVENT BUF ADDR---
+    buf[0] = EVENT_MAP_RESET_COMPLETE;
+    buf[1] = 0x00;
+    CTP_I2C_WRITE(ts->client, I2C_FW_Address, buf, 2);
+
+    msleep(35);
+
+    NVT_LOG("--\n");
 }
 
+// Add robust I2C communication check
+static int nvt_check_i2c_ready(struct i2c_client *client)
+{
+    uint8_t buf[8] = {0};
+    int ret;
+    int retry;
+
+    for (retry = 0; retry < 10; retry++) {
+        buf[0] = 0x00;
+        ret = CTP_I2C_READ(client, I2C_HW_Address, buf, 2);
+        if (ret >= 0 && buf[1] != 0xFF) {
+            NVT_LOG("I2C ready after %d retries, response: 0x%02X\n", 
+                    retry, buf[1]);
+            return 0;
+        }
+        msleep(20);
+        
+        /* Try hardware reset if I2C not responding */
+        if (retry == 5) {
+            NVT_LOG("Attempting hardware reset.. .\n");
+            nvt_gpio_set_reset(0);
+            msleep(20);
+            nvt_gpio_set_reset(1);
+            msleep(100);
+        }
+    }
+
+    NVT_ERR("I2C not ready after %d retries\n", retry);
+    return -ENODEV;
+}
 /*******************************************************
 Description:
 	Novatek touchscreen clear FW status function.
