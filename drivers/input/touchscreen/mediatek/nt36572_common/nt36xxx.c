@@ -105,7 +105,7 @@ static int nvt_gpio_fallback_init(struct i2c_client *client)
 }
 
 // Add GPIO control wrapper function
-static void nvt_gpio_set_reset(int level)
+ void nvt_gpio_set_reset(int level)
 {
     if (nvt_gpio_data.use_gpio_fallback && gpio_is_valid(nvt_gpio_data.rst_gpio)) {
         gpio_set_value(nvt_gpio_data.rst_gpio, level);
