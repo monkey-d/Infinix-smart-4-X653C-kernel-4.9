@@ -6,7 +6,7 @@ on:
       kernel_branch:
         description: 'Kernel source branch to build'
         required: true
-        default: 'integrate-touchscreen-driver'
+        default: 'main'
       defconfig_name:
         description: 'Name of the defconfig file (inside arch/arm/configs/)'
         required: true
