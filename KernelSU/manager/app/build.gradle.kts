@@ -14,6 +14,7 @@ plugins {
 
 val managerVersionCode: Int by rootProject.extra
 val managerVersionName: String by rootProject.extra
+val androidCmakeVersion: String by rootProject.extra
 
 apksign {
     storeFileProperty = "KEYSTORE_FILE"
@@ -29,6 +30,7 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            vcsInfo.include = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
@@ -38,10 +40,6 @@ android {
         buildConfig = true
         compose = true
         prefab = true
-    }
-
-    kotlinOptions {
-        jvmTarget = "21"
     }
 
     packaging {
@@ -61,7 +59,8 @@ android {
 
     externalNativeBuild {
         cmake {
-            path("src/main/cpp/CMakeLists.txt")
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = androidCmakeVersion
         }
     }
 
@@ -92,14 +91,16 @@ android {
     }
 }
 
+ksp {
+    arg("compose-destinations.defaultTransitions", "none")
+}
+
 dependencies {
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.navigation.compose)
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.material.icons.extended)
-    implementation(libs.androidx.compose.material)
-    implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.tooling.preview)
 
@@ -123,14 +124,13 @@ dependencies {
 
     implementation(libs.kotlinx.coroutines.core)
 
-    implementation(libs.me.zhanghai.android.appiconloader.coil)
+    implementation(libs.markwon)
 
-    implementation(libs.sheet.compose.dialogs.core)
-    implementation(libs.sheet.compose.dialogs.list)
-    implementation(libs.sheet.compose.dialogs.input)
-
-    implementation(libs.markdown)
     implementation(libs.androidx.webkit)
 
     implementation(libs.lsposed.cxx)
+
+    implementation(libs.miuix)
+    implementation(libs.haze)
+    implementation(libs.capsule)
 }

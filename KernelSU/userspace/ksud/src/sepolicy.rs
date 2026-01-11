@@ -19,7 +19,7 @@ fn parse_single_word(input: &str) -> IResult<&str, &str> {
     take_while1(is_sepolicy_char).parse(input)
 }
 
-fn parse_bracket_objs(input: &str) -> IResult<&str, SeObject> {
+fn parse_bracket_objs(input: &str) -> IResult<&str, SeObject<'_>> {
     let (input, (_, words, _)) = (
         tag("{"),
         take_while_m_n(1, 100, |c: char| is_sepolicy_char(c) || c.is_whitespace()),
@@ -29,12 +29,12 @@ fn parse_bracket_objs(input: &str) -> IResult<&str, SeObject> {
     Ok((input, words.split_whitespace().collect()))
 }
 
-fn parse_single_obj(input: &str) -> IResult<&str, SeObject> {
+fn parse_single_obj(input: &str) -> IResult<&str, SeObject<'_>> {
     let (input, word) = take_while1(is_sepolicy_char).parse(input)?;
     Ok((input, vec![word]))
 }
 
-fn parse_star(input: &str) -> IResult<&str, SeObject> {
+fn parse_star(input: &str) -> IResult<&str, SeObject<'_>> {
     let (input, _) = tag("*").parse(input)?;
     Ok((input, vec!["*"]))
 }
@@ -42,12 +42,12 @@ fn parse_star(input: &str) -> IResult<&str, SeObject> {
 // 1. a single sepolicy word
 // 2. { obj1 obj2 obj3 ...}
 // 3. *
-fn parse_seobj(input: &str) -> IResult<&str, SeObject> {
+fn parse_seobj(input: &str) -> IResult<&str, SeObject<'_>> {
     let (input, strs) = alt((parse_single_obj, parse_bracket_objs, parse_star)).parse(input)?;
     Ok((input, strs))
 }
 
-fn parse_seobj_no_star(input: &str) -> IResult<&str, SeObject> {
+fn parse_seobj_no_star(input: &str) -> IResult<&str, SeObject<'_>> {
     let (input, strs) = alt((parse_single_obj, parse_bracket_objs)).parse(input)?;
     Ok((input, strs))
 }
@@ -389,11 +389,11 @@ impl TryFrom<&str> for PolicyObject {
     fn try_from(s: &str) -> Result<Self> {
         anyhow::ensure!(s.len() <= SEPOLICY_MAX_LEN, "policy object too long");
         if s == "*" {
-            return Ok(PolicyObject::All);
+            return Ok(Self::All);
         }
         let mut buf = [0u8; SEPOLICY_MAX_LEN];
         buf[..s.len()].copy_from_slice(s.as_bytes());
-        Ok(PolicyObject::One(buf))
+        Ok(Self::One(buf))
     }
 }
 
@@ -659,36 +659,72 @@ impl<'a> TryFrom<&'a PolicyStatement<'a>> for Vec<AtomicStatement> {
 struct FfiPolicy {
     cmd: u32,
     subcmd: u32,
-    sepol1: *const ffi::c_char,
-    sepol2: *const ffi::c_char,
-    sepol3: *const ffi::c_char,
-    sepol4: *const ffi::c_char,
-    sepol5: *const ffi::c_char,
-    sepol6: *const ffi::c_char,
-    sepol7: *const ffi::c_char,
+    sepol1: u64,
+    sepol2: u64,
+    sepol3: u64,
+    sepol4: u64,
+    sepol5: u64,
+    sepol6: u64,
+    sepol7: u64,
 }
 
-fn to_c_ptr(pol: &PolicyObject) -> *const ffi::c_char {
-    match pol {
+fn to_u64_addr(pol: &PolicyObject) -> u64 {
+    let raw_ptr: *const ffi::c_char = match pol {
         PolicyObject::None | PolicyObject::All => std::ptr::null(),
         PolicyObject::One(s) => s.as_ptr().cast::<ffi::c_char>(),
-    }
+    };
+
+    raw_ptr as usize as u64
 }
 
 impl From<AtomicStatement> for FfiPolicy {
-    fn from(policy: AtomicStatement) -> FfiPolicy {
-        FfiPolicy {
+    fn from(policy: AtomicStatement) -> Self {
+        Self {
             cmd: policy.cmd,
             subcmd: policy.subcmd,
-            sepol1: to_c_ptr(&policy.sepol1),
-            sepol2: to_c_ptr(&policy.sepol2),
-            sepol3: to_c_ptr(&policy.sepol3),
-            sepol4: to_c_ptr(&policy.sepol4),
-            sepol5: to_c_ptr(&policy.sepol5),
-            sepol6: to_c_ptr(&policy.sepol6),
-            sepol7: to_c_ptr(&policy.sepol7),
+            sepol1: to_u64_addr(&policy.sepol1),
+            sepol2: to_u64_addr(&policy.sepol2),
+            sepol3: to_u64_addr(&policy.sepol3),
+            sepol4: to_u64_addr(&policy.sepol4),
+            sepol5: to_u64_addr(&policy.sepol5),
+            sepol6: to_u64_addr(&policy.sepol6),
+            sepol7: to_u64_addr(&policy.sepol7),
         }
     }
+}
+
+fn apply_one_rule<'a>(statement: &'a PolicyStatement<'a>, strict: bool) -> Result<()> {
+    let policies: Vec<AtomicStatement> = statement.try_into()?;
+
+    for policy in policies {
+        let ffi_policy = FfiPolicy::from(policy);
+        let cmd = crate::ksucalls::SetSepolicyCmd {
+            cmd: 0,
+            arg: &raw const ffi_policy as u64,
+        };
+        if let Err(e) = crate::ksucalls::set_sepolicy(&cmd) {
+            log::warn!("apply rule {statement:?} failed: {e}");
+            if strict {
+                return Err(anyhow::anyhow!("apply rule {:?} failed: {}", statement, e));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+pub fn live_patch(policy: &str) -> Result<()> {
+    let result = parse_sepolicy(policy.trim(), false)?;
+    for statement in result {
+        println!("{statement:?}");
+        apply_one_rule(&statement, false)?;
+    }
+    Ok(())
+}
+
+pub fn apply_file<P: AsRef<Path>>(path: P) -> Result<()> {
+    let input = std::fs::read_to_string(path)?;
+    live_patch(&input)
 }
 
 pub fn check_rule(policy: &str) -> Result<()> {

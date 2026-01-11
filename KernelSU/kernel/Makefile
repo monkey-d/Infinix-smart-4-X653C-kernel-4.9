@@ -1,100 +1,20 @@
-kernelsu-objs := ksu.o
-kernelsu-objs += allowlist.o
-kernelsu-objs += apk_sign.o
-kernelsu-objs += sucompat.o
-kernelsu-objs += throne_tracker.o
-kernelsu-objs += core_hook.o
-kernelsu-objs += ksud.o
-kernelsu-objs += kernel_compat.o
+KDIR := $(KDIR)
+MDIR := $(realpath $(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
 
-kernelsu-objs += selinux/selinux.o
-kernelsu-objs += selinux/sepolicy.o
-kernelsu-objs += selinux/rules.o
-ccflags-y += -I$(srctree)/security/selinux -I$(srctree)/security/selinux/include
-ccflags-y += -I$(objtree)/security/selinux -include $(srctree)/include/uapi/asm-generic/errno.h
+$(info -- KDIR: $(KDIR))
+$(info -- MDIR: $(MDIR))
 
-# Do checks before compile
-ifneq ($(shell grep -q "int path_umount" $(srctree)/fs/namespace.c; echo $$?),0)
-$(error -- Backporting path_umount is mandatory !! Read: https://kernelsu.org/guide/how-to-integrate-for-non-gki.html#how-to-backport-path-umount)
-endif
+.PHONY: all compdb clean
 
-obj-$(CONFIG_KSU) += kernelsu.o
-
-# .git is a text file while the module is imported by 'git submodule add'.
-ifeq ($(shell test -e $(srctree)/$(src)/../.git; echo $$?),0)
-$(shell cd $(srctree)/$(src); /usr/bin/env PATH="$$PATH":/usr/bin:/usr/local/bin [ -f ../.git/shallow ] && git fetch --unshallow)
-KSU_GIT_VERSION := $(shell cd $(srctree)/$(src); /usr/bin/env PATH="$$PATH":/usr/bin:/usr/local/bin git rev-list --count HEAD)
-# ksu_version: major * 10000 + git version + 200 for historical reasons
-$(eval KSU_VERSION=$(shell expr 10000 + $(KSU_GIT_VERSION) + 200))
-$(info -- KernelSU version: $(KSU_VERSION))
-ccflags-y += -DKSU_VERSION=$(KSU_VERSION)
-else # If there is no .git file, the default version will be passed.
-$(warning "KSU_GIT_VERSION not defined! It is better to make KernelSU a git submodule!")
-ccflags-y += -DKSU_VERSION=16
-endif
-
-# SELinux drivers check
-ifeq ($(shell grep -q " current_sid(void)" $(srctree)/security/selinux/include/objsec.h; echo $$?),0)
-ccflags-y += -DKSU_COMPAT_HAS_CURRENT_SID
-endif
-ifeq ($(shell grep -q "struct selinux_state " $(srctree)/security/selinux/include/security.h; echo $$?),0)
-ccflags-y += -DKSU_COMPAT_HAS_SELINUX_STATE
-endif
-
-# This feature was introduced in linux 5.0-rc1
-ifeq ($(shell grep -q "get_cred_rcu" $(srctree)/include/linux/cred.h; echo $$?),0)
-ccflags-y += -DKSU_COMPAT_GET_CRED_RCU
-else
-# https://github.com/gregkh/linux/commit/123e44b9a49a42ff5313ec65256f1540d7c52fa0
-ifeq ($(shell grep -q "atomic_long_inc" $(srctree)/include/linux/cred.h; echo $$?),0)
-$(info -- KernelSU compat: atomic_long_t detected.)
-ccflags-y += -DKSU_COMPAT_ATOMIC_LONG
-else
-$(info -- KernelSU compat: atomic_t detected.)
-endif
-endif
-
-# Handle optional backports
-ifeq ($(shell grep -q "strncpy_from_user_nofault" $(srctree)/include/linux/uaccess.h; echo $$?),0)
-ccflags-y += -DKSU_OPTIONAL_STRNCPY
-endif
-ifeq ($(shell grep -q "ssize_t kernel_read" $(srctree)/fs/read_write.c; echo $$?),0)
-ccflags-y += -DKSU_OPTIONAL_KERNEL_READ
-endif
-ifeq ($(shell grep "ssize_t kernel_write" $(srctree)/fs/read_write.c | grep -q "const void" ; echo $$?),0)
-ccflags-y += -DKSU_OPTIONAL_KERNEL_WRITE
-endif
-
-# Checks Samsung UH drivers
-ifeq ($(shell grep -q "CONFIG_KDP_CRED" $(srctree)/kernel/cred.c; echo $$?),0)
-ccflags-y += -DSAMSUNG_UH_DRIVER_EXIST
-endif
-ifeq ($(shell grep -q "SEC_SELINUX_PORTING_COMMON" $(srctree)/security/selinux/hooks.c; echo $$?),0)
-$(info -- KernelSU compat: Samsung SELinux porting)
-ccflags-y += -DKSU_COMPAT_SELINUX_SEC_PORT
-endif
-
-ifndef KSU_EXPECTED_SIZE
-KSU_EXPECTED_SIZE := 0x389
-endif
-
-ifndef KSU_EXPECTED_HASH
-KSU_EXPECTED_HASH := 7844950b91267c624eb9e2a881b9f955b500a57f2307e26abb81be117723dc10
-endif
-
-ifdef KSU_MANAGER_PACKAGE
-ccflags-y += -DKSU_MANAGER_PACKAGE=\"$(KSU_MANAGER_PACKAGE)\"
-$(info -- KernelSU Manager package name: $(KSU_MANAGER_PACKAGE))
-endif
-
-$(info -- KernelSU Manager signature size: $(KSU_EXPECTED_SIZE))
-$(info -- KernelSU Manager signature hash: $(KSU_EXPECTED_HASH))
-$(info -- Supported Unofficial Manager: rsuntk (32-bit)) 
-
-ccflags-y += -DEXPECTED_SIZE=$(KSU_EXPECTED_SIZE)
-ccflags-y += -DEXPECTED_HASH=\"$(KSU_EXPECTED_HASH)\"
-
-ccflags-y += -Wno-implicit-function-declaration -Wno-strict-prototypes  
-ccflags-y += -Wno-declaration-after-statement -Wno-unused-function
+all: check_symbol
+	make -C $(KDIR) M=$(MDIR) modules
+	./check_symbol kernelsu.ko $(KDIR)/vmlinux
+compdb:
+	python3 $(MDIR)/.vscode/generate_compdb.py -O $(KDIR) $(MDIR)
+clean:
+	make -C $(KDIR) M=$(MDIR) clean
+	rm check_symbol
+check_symbol: tools/check_symbol.c
+	$(CC) tools/check_symbol.c -o check_symbol
 
 # Keep a new line here!! Because someone may append config

@@ -17,6 +17,7 @@ fun getBugreportFile(context: Context): File {
     val bugreportDir = File(context.cacheDir, "bugreport")
     bugreportDir.mkdirs()
 
+    val processFile = File(bugreportDir, "process.txt")
     val dmesgFile = File(bugreportDir, "dmesg.txt")
     val logcatFile = File(bugreportDir, "logcat.txt")
     val tombstonesFile = File(bugreportDir, "tombstones.tar.gz")
@@ -24,7 +25,7 @@ fun getBugreportFile(context: Context): File {
     val pstoreFile = File(bugreportDir, "pstore.tar.gz")
     // Xiaomi/Readmi devices have diag in /data/vendor/diag
     val diagFile = File(bugreportDir, "diag.tar.gz")
-    val opulsFile = File(bugreportDir, "opuls.tar.gz")
+    val oplusFile = File(bugreportDir, "oplus.tar.gz")
     val bootlogFile = File(bugreportDir, "bootlog.tar.gz")
     val mountsFile = File(bugreportDir, "mounts.txt")
     val fileSystemsFile = File(bugreportDir, "filesystems.txt")
@@ -40,13 +41,15 @@ fun getBugreportFile(context: Context): File {
 
     val shell = getRootShell(true)
 
+    // busybox ps has very few features for embed devices
+    shell.newJob().add("toybox ps -T -A -w -o PID,TID,UID,COMM,CMDLINE,CMD,LABEL,STAT,WCHAN > ${processFile.absolutePath}").exec()
     shell.newJob().add("dmesg > ${dmesgFile.absolutePath}").exec()
     shell.newJob().add("logcat -d > ${logcatFile.absolutePath}").exec()
     shell.newJob().add("tar -czf ${tombstonesFile.absolutePath} -C /data/tombstones .").exec()
     shell.newJob().add("tar -czf ${dropboxFile.absolutePath} -C /data/system/dropbox .").exec()
     shell.newJob().add("tar -czf ${pstoreFile.absolutePath} -C /sys/fs/pstore .").exec()
     shell.newJob().add("tar -czf ${diagFile.absolutePath} -C /data/vendor/diag . --exclude=./minidump.gz").exec()
-    shell.newJob().add("tar -czf ${opulsFile.absolutePath} -C /mnt/oplus/op2/media/log/boot_log/ .").exec()
+    shell.newJob().add("tar -czf ${oplusFile.absolutePath} -C /mnt/oplus/op2/media/log/boot_log/ .").exec()
     shell.newJob().add("tar -czf ${bootlogFile.absolutePath} -C /data/adb/ksu/log .").exec()
 
     shell.newJob().add("cat /proc/1/mountinfo > ${mountsFile.absolutePath}").exec()

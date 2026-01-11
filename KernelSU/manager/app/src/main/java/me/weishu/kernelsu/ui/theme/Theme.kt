@@ -1,46 +1,57 @@
 package me.weishu.kernelsu.ui.theme
 
-import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.platform.LocalContext
-
-private val DarkColorScheme = darkColorScheme(
-    primary = YELLOW,
-    secondary = YELLOW_DARK,
-    tertiary = SECONDARY_DARK
-)
-
-private val LightColorScheme = lightColorScheme(
-    primary = YELLOW,
-    secondary = YELLOW_LIGHT,
-    tertiary = SECONDARY_LIGHT
-)
+import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.ui.graphics.Color
+import me.weishu.kernelsu.ui.webui.MonetColorsProvider.UpdateCss
+import top.yukonga.miuix.kmp.theme.ColorSchemeMode
+import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.theme.ThemeController
 
 @Composable
 fun KernelSUTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    // Dynamic color is available on Android 12+
-    dynamicColor: Boolean = true,
+    colorMode: Int = 0,
+    keyColor: Color? = null,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        }
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
-    }
+    val isDark = isSystemInDarkTheme()
+    val controller = when (colorMode) {
+        1 -> ThemeController(ColorSchemeMode.Light)
+        2 -> ThemeController(ColorSchemeMode.Dark)
+        3 -> ThemeController(
+            ColorSchemeMode.MonetSystem,
+            keyColor = keyColor,
+            isDark = isDark
+        )
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = Typography,
-        content = content
+        4 -> ThemeController(
+            ColorSchemeMode.MonetLight,
+            keyColor = keyColor,
+        )
+
+        5 -> ThemeController(
+            ColorSchemeMode.MonetDark,
+            keyColor = keyColor,
+        )
+
+        else -> ThemeController(ColorSchemeMode.System)
+    }
+    return MiuixTheme(
+        controller = controller,
+        content = {
+            UpdateCss()
+            content()
+        }
     )
+}
+
+@Composable
+@ReadOnlyComposable
+fun isInDarkTheme(themeMode: Int): Boolean {
+    return when (themeMode) {
+        1, 4 -> false  // Force light mode
+        2, 5 -> true   // Force dark mode
+        else -> isSystemInDarkTheme()  // Follow system (0 or default)
+    }
 }
