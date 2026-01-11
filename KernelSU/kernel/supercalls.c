@@ -139,7 +139,7 @@ static int do_set_sepolicy(void __user *arg)
 		return -EFAULT;
 	}
 
-	return handle_sepolicy(cmd.cmd, (void __user *)cmd.arg);
+	return handle_sepolicy(cmd.cmd, (void __user *)(uintptr_t)cmd.arg);
 }
 
 static int do_check_safemode(void __user *arg)
@@ -518,7 +518,7 @@ static int add_try_umount(void __user *arg)
 	}
 
 	case KSU_UMOUNT_ADD: {
-		long len = strncpy_from_user(buf, (const char __user *)cmd.arg,
+		long len = strncpy_from_user(buf, (const char __user *)(uintptr_t)cmd.arg,
 					     256);
 		if (len <= 0)
 			return -EFAULT;
@@ -567,7 +567,7 @@ static int add_try_umount(void __user *arg)
 
 	// this is just strcmp'd wipe anyway
 	case KSU_UMOUNT_DEL: {
-		long len = strncpy_from_user(buf, (const char __user *)cmd.arg,
+		long len = strncpy_from_user(buf, (const char __user *)(uintptr_t)cmd.arg,
 					     sizeof(buf) - 1);
 		if (len <= 0)
 			return -EFAULT;
@@ -606,7 +606,7 @@ static int add_try_umount(void __user *arg)
 
 		pr_info("cmd_add_try_umount: total_size: %zu\n", total_size);
 
-		if (copy_to_user((size_t __user *)cmd.arg, &total_size,
+		if (copy_to_user((size_t __user *)(uintptr_t)cmd.arg, &total_size,
 				 sizeof(total_size)))
 			return -EFAULT;
 
@@ -621,7 +621,7 @@ static int add_try_umount(void __user *arg)
 		if (!cmd.arg)
 			return -EFAULT;
 
-		char *user_buf = (char *)cmd.arg;
+		char *user_buf = (char *)(uintptr_t)cmd.arg;
 
 		down_read(&mount_list_lock);
 		list_for_each_entry (entry, &mount_list, list) {
