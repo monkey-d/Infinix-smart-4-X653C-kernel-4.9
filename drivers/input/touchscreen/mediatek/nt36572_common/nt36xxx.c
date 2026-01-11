@@ -39,81 +39,6 @@
 #include <linux/jiffies.h>
 #endif /* #if NVT_TOUCH_ESD_PROTECT */
 
-// Add after the includes section (around line 30)
-#include <linux/gpio.h>
-#include <linux/of_gpio.h>
-
-// Add new structure for GPIO fallback
-static struct {
-    int rst_gpio;
-    int irq_gpio;
-    bool use_gpio_fallback;
-} nvt_gpio_data = {
-    . rst_gpio = -1,
-    . irq_gpio = -1,
-    .use_gpio_fallback = false,
-};
-
-// Add GPIO fallback initialization function
-static int nvt_gpio_fallback_init(struct i2c_client *client)
-{
-    struct device_node *np = client->dev. of_node;
-    int ret;
-
-    /* Try to get reset GPIO */
-    nvt_gpio_data.rst_gpio = of_get_named_gpio(np, "novatek,reset-gpio", 0);
-    if (!gpio_is_valid(nvt_gpio_data.rst_gpio)) {
-        /* Try alternate property names */
-        nvt_gpio_data. rst_gpio = of_get_named_gpio(np, "reset-gpios", 0);
-    }
-    if (!gpio_is_valid(nvt_gpio_data. rst_gpio)) {
-        nvt_gpio_data.rst_gpio = of_get_named_gpio(np, "rst-gpio", 0);
-    }
-
-    /* Try to get IRQ GPIO */
-    nvt_gpio_data.irq_gpio = of_get_named_gpio(np, "novatek,irq-gpio", 0);
-    if (!gpio_is_valid(nvt_gpio_data.irq_gpio)) {
-        nvt_gpio_data.irq_gpio = of_get_named_gpio(np, "int-gpios", 0);
-    }
-
-    if (gpio_is_valid(nvt_gpio_data.rst_gpio)) {
-        ret = gpio_request(nvt_gpio_data.rst_gpio, "nvt_rst");
-        if (ret < 0) {
-            NVT_ERR("Failed to request reset GPIO: %d\n", ret);
-            nvt_gpio_data.rst_gpio = -1;
-        } else {
-            gpio_direction_output(nvt_gpio_data. rst_gpio, 1);
-            nvt_gpio_data.use_gpio_fallback = true;
-            NVT_LOG("Using GPIO fallback for reset:  GPIO %d\n", 
-                    nvt_gpio_data.rst_gpio);
-        }
-    }
-
-    if (gpio_is_valid(nvt_gpio_data.irq_gpio)) {
-        ret = gpio_request(nvt_gpio_data. irq_gpio, "nvt_irq");
-        if (ret < 0) {
-            NVT_ERR("Failed to request IRQ GPIO: %d\n", ret);
-            nvt_gpio_data.irq_gpio = -1;
-        } else {
-            gpio_direction_input(nvt_gpio_data.irq_gpio);
-            NVT_LOG("Using GPIO fallback for IRQ: GPIO %d\n", 
-                    nvt_gpio_data. irq_gpio);
-        }
-    }
-
-    return nvt_gpio_data.use_gpio_fallback ?  0 : -ENODEV;
-}
-
-// Add GPIO control wrapper function
- void nvt_gpio_set_reset(int level)
-{
-    if (nvt_gpio_data.use_gpio_fallback && gpio_is_valid(nvt_gpio_data.rst_gpio)) {
-        gpio_set_value(nvt_gpio_data.rst_gpio, level);
-    } else {
-        NVT_GPIO_OUTPUT(GTP_RST_PORT, level);
-    }
-}
-
 #if NVT_TOUCH_ESD_PROTECT
 static struct delayed_work nvt_esd_check_work;
 static struct workqueue_struct *nvt_esd_check_wq;
@@ -537,76 +462,19 @@ Description:
 return:
 	n.a.
 *******************************************************/
-// Replace the existing nvt_bootloader_reset function
 void nvt_bootloader_reset(void)
 {
-    uint8_t buf[8] = {0};
-    int retry = 0;
+	uint8_t buf[8] = {0};
 
-    NVT_LOG("++\n");
+	//---write i2c cmds to reset---
+	buf[0] = 0x00;
+	buf[1] = 0x69;
+	CTP_I2C_WRITE(ts->client, I2C_HW_Address, buf, 2);
 
-    /* Perform hardware reset first */
-    nvt_gpio_set_reset(0);
-    msleep(20);  /* Increased from 10ms */
-    nvt_gpio_set_reset(1);
-    msleep(50);  /* Increased delay after reset */
-
-    /* Send software reset command with retry */
-    for (retry = 0; retry < 5; retry++) {
-        //---set xdata index to EVENT BUF ADDR---
-        buf[0] = 0xFF;
-        buf[1] = (ts->mmap->EVENT_BUF_ADDR >> 16) & 0xFF;
-        buf[2] = (ts->mmap->EVENT_BUF_ADDR >> 8) & 0xFF;
-        if (CTP_I2C_WRITE(ts->client, I2C_FW_Address, buf, 3) >= 0)
-            break;
-        msleep(10);
-    }
-
-    if (retry >= 5) {
-        NVT_ERR("Failed to set xdata index after reset\n");
-        return;
-    }
-
-    //---write RESET_STATE_INIT to EVENT BUF ADDR---
-    buf[0] = EVENT_MAP_RESET_COMPLETE;
-    buf[1] = 0x00;
-    CTP_I2C_WRITE(ts->client, I2C_FW_Address, buf, 2);
-
-    msleep(35);
-
-    NVT_LOG("--\n");
+	// need 35ms delay after bootloader reset
+	msleep(35);
 }
 
-// Add robust I2C communication check
- int nvt_check_i2c_ready(struct i2c_client *client)
-{
-    uint8_t buf[8] = {0};
-    int ret;
-    int retry;
-
-    for (retry = 0; retry < 10; retry++) {
-        buf[0] = 0x00;
-        ret = CTP_I2C_READ(client, I2C_HW_Address, buf, 2);
-        if (ret >= 0 && buf[1] != 0xFF) {
-            NVT_LOG("I2C ready after %d retries, response: 0x%02X\n", 
-                    retry, buf[1]);
-            return 0;
-        }
-        msleep(20);
-        
-        /* Try hardware reset if I2C not responding */
-        if (retry == 5) {
-            NVT_LOG("Attempting hardware reset.. .\n");
-            nvt_gpio_set_reset(0);
-            msleep(20);
-            nvt_gpio_set_reset(1);
-            msleep(100);
-        }
-    }
-
-    NVT_ERR("I2C not ready after %d retries\n", retry);
-    return -ENODEV;
-}
 /*******************************************************
 Description:
 	Novatek touchscreen clear FW status function.
@@ -766,86 +634,61 @@ Description:
 
 return:
 	Executive outcomes. 0---success. -1---fail.
-*****/
-
-// Replace the existing nvt_get_fw_info function
+*******************************************************/
 int32_t nvt_get_fw_info(void)
 {
-    uint8_t buf[64] = {0};
-    uint32_t retry_count = 0;
-    int32_t ret = 0;
+	uint8_t buf[64] = {0};
+	uint32_t retry_count = 0;
+	int32_t ret = 0;
 
-    for (retry_count = 0; retry_count < 5; retry_count++) {
-        //---set xdata index to EVENT BUF ADDR---
-        buf[0] = 0xFF;
-        buf[1] = (ts->mmap->EVENT_BUF_ADDR >> 16) & 0xFF;
-        buf[2] = (ts->mmap->EVENT_BUF_ADDR >> 8) & 0xFF;
-        ret = CTP_I2C_WRITE(ts->client, I2C_FW_Address, buf, 3);
-        if (ret < 0) {
-            NVT_ERR("Set xdata index failed, retry %d\n", retry_count);
-            msleep(20);
-            continue;
-        }
+info_retry:
+	//---set xdata index to EVENT BUF ADDR---
+	buf[0] = 0xFF;
+	buf[1] = (ts->mmap->EVENT_BUF_ADDR >> 16) & 0xFF;
+	buf[2] = (ts->mmap->EVENT_BUF_ADDR >> 8) & 0xFF;
+	CTP_I2C_WRITE(ts->client, I2C_FW_Address, buf, 3);
 
-        //---read fw info---
-        buf[0] = EVENT_MAP_FWINFO;
-        ret = CTP_I2C_READ(ts->client, I2C_FW_Address, buf, 17);
-        if (ret < 0) {
-            NVT_ERR("Read fw info failed, retry %d\n", retry_count);
-            msleep(20);
-            continue;
-        }
+	//---read fw info---
+	buf[0] = EVENT_MAP_FWINFO;
+	CTP_I2C_READ(ts->client, I2C_FW_Address, buf, 17);
+	ts->fw_ver = buf[1];
+	ts->x_num = buf[3];
+	ts->y_num = buf[4];
+	ts->abs_x_max = (uint16_t)((buf[5] << 8) | buf[6]);
+	ts->abs_y_max = (uint16_t)((buf[7] << 8) | buf[8]);
+	ts->max_button_num = buf[11];
 
-        ts->fw_ver = buf[1];
-        ts->x_num = buf[3];
-        ts->y_num = buf[4];
-        ts->abs_x_max = (uint16_t)((buf[5] << 8) | buf[6]);
-        ts->abs_y_max = (uint16_t)((buf[7] << 8) | buf[8]);
-        ts->max_button_num = buf[11];
+	//---clear x_num, y_num if fw info is broken---
+	if ((buf[1] + buf[2]) != 0xFF) {
+		NVT_ERR("FW info is broken! fw_ver=0x%02X, ~fw_ver=0x%02X\n", buf[1], buf[2]);
+		ts->fw_ver = 0;
+		ts->x_num = 18;
+		ts->y_num = 32;
+		ts->abs_x_max = TOUCH_DEFAULT_MAX_WIDTH;
+		ts->abs_y_max = TOUCH_DEFAULT_MAX_HEIGHT;
+		ts->max_button_num = TOUCH_KEY_NUM;
 
-        /* Validate firmware info */
-        if ((buf[1] + buf[2]) != 0xFF) {
-            NVT_ERR("FW info checksum error!  fw_ver=0x%02X, ~fw_ver=0x%02X, retry %d\n",
-                    buf[1], buf[2], retry_count);
-            
-            /* Try reset before next retry */
-            if (retry_count < 4) {
-                nvt_bootloader_reset();
-                msleep(50);
-            }
-            continue;
-        }
+		if(retry_count < 3) {
+			retry_count++;
+			NVT_ERR("retry_count=%d\n", retry_count);
+			goto info_retry;
+		} else {
+			NVT_ERR("Set default fw_ver=%d, x_num=%d, y_num=%d, \
+					abs_x_max=%d, abs_y_max=%d, max_button_num=%d!\n",
+					ts->fw_ver, ts->x_num, ts->y_num,
+					ts->abs_x_max, ts->abs_y_max, ts->max_button_num);
+			ret = -1;
+		}
+	} else {
+		ret = 0;
+	}
 
-        /* Validate x_num and y_num are reasonable */
-        if (ts->x_num == 0 || ts->x_num > 40 || 
-            ts->y_num == 0 || ts->y_num > 40) {
-            NVT_ERR("Invalid x_num=%d, y_num=%d, retry %d\n",
-                    ts->x_num, ts->y_num, retry_count);
-            if (retry_count < 4) {
-                nvt_bootloader_reset();
-                msleep(50);
-            }
-            continue;
-        }
+	//---Get Novatek PID---
+	nvt_read_pid();
 
-        NVT_LOG("fw_ver=0x%02X, x_num=%d, y_num=%d, abs_x_max=%d, abs_y_max=%d, max_button_num=%d\n",
-                ts->fw_ver, ts->x_num, ts->y_num,
-                ts->abs_x_max, ts->abs_y_max, ts->max_button_num);
-        
-        return 0;
-    }
-
-    /* Use default values if all retries failed */
-    NVT_ERR("Failed to get FW info after %d retries, using defaults\n", retry_count);
-    ts->fw_ver = 0;
-    ts->x_num = 18;  /* Default for NT36xxx */
-    ts->y_num = 32;
-    ts->abs_x_max = TOUCH_DEFAULT_MAX_WIDTH;
-    ts->abs_y_max = TOUCH_DEFAULT_MAX_HEIGHT;
-    ts->max_button_num = TOUCH_KEY_NUM;
-
-    return -EAGAIN;
+	return ret;
 }
+
 /*******************************************************
   Create Device Node (Proc Entry)
 *******************************************************/
@@ -1572,67 +1415,36 @@ Description:
 return:
 	Executive outcomes. 0---succeed. negative---failed
 *******************************************************/
-// In nvt_ts_probe function, add after client assignment
-static int32_t nvt_ts_probe(struct i2c_client *client,
-                            const struct i2c_device_id *id)
+static int32_t nvt_ts_probe(struct i2c_client *client, const struct i2c_device_id *id)
 {
-    int32_t ret = 0;
-    int retry;
+	int32_t ret = 0;
+#if ((TOUCH_KEY_NUM > 0) || WAKEUP_GESTURE)
+	int32_t retry = 0;
+#endif
 
-    NVT_LOG("start\n");
+	NVT_LOG("start\n");
 
-    ts = kzalloc(sizeof(struct nvt_ts_data), GFP_KERNEL);
-    if (ts == NULL) {
-        NVT_ERR("failed to allocate memory for nvt_ts_data\n");
-        return -ENOMEM;
-    }
+	ts = kmalloc(sizeof(struct nvt_ts_data), GFP_KERNEL);
+	if (ts == NULL) {
+		NVT_ERR("failed to allocated memory for nvt ts data\n");
+		return -ENOMEM;
+	}
 
-    ts->client = client;
-    i2c_set_clientdata(client, ts);
+	ts->client = client;
+	i2c_set_clientdata(client, ts);
 
-    /* Initialize mutex */
-    mutex_init(&ts->lock);
+#if NVT_TOUCH_SUPPORT_HW_RST
+	NVT_GPIO_OUTPUT(GTP_RST_PORT, 1);
+#endif
+	//---request INT-pin---
+	NVT_GPIO_AS_INT(GTP_INT_PORT);
 
-    /* Try GPIO fallback initialization first */
-    ret = nvt_gpio_fallback_init(client);
-    if (ret < 0) {
-        NVT_LOG("GPIO fallback not available, using pinctrl\n");
-    }
-
-    /* Configure interrupt GPIO */
-    NVT_GPIO_AS_INT(GTP_INT_PORT);
-
-    /* Perform initial hardware reset */
-    NVT_LOG("Performing initial hardware reset\n");
-    nvt_gpio_set_reset(0);
-    msleep(20);
-    nvt_gpio_set_reset(1);
-    msleep(100);  /* Wait for controller to boot */
-
-    /* Check I2C communication */
-    ret = nvt_check_i2c_ready(client);
-    if (ret < 0) {
-        NVT_ERR("I2C communication failed!\n");
-        /* Don't fail immediately - try to continue */
-    }
-
-    /* Check chip version with retries */
-    for (retry = 0; retry < 3; retry++) {
-        ret = nvt_ts_check_chip_ver_trim();
-        if (ret == 0) {
-            NVT_LOG("Chip verified on attempt %d\n", retry + 1);
-            break;
-        }
-        NVT_ERR("Chip verify failed, attempt %d\n", retry + 1);
-        nvt_bootloader_reset();
-        msleep(100);
-    }
-
-    if (ret) {
-        NVT_ERR("chip is not identified, using default memory map\n");
-        /* Set a default memory map for NT36672A or similar */
-        ts->mmap = &NT36672A_memory_map;  /* You may need to define this */
-    }
+	//---check i2c func.---
+	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
+		NVT_ERR("i2c_check_functionality failed. (no I2C_FUNC_I2C)\n");
+		ret = -ENODEV;
+		goto err_check_functionality_failed;
+	}
 
 	// need 10ms delay after POR(power on reset)
 	msleep(10);
@@ -1833,6 +1645,7 @@ err_input_register_device_failed:
 	if (tpd->dev == NULL)
 		input_free_device(ts->input_dev);
 err_input_dev_alloc_failed:
+err_check_functionality_failed:
 	i2c_set_clientdata(client, NULL);
 	kfree(ts);
 	return ret;
