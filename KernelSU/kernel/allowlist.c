@@ -48,7 +48,7 @@ static struct file *allowlist_filp_open(const char *filename, int flags, umode_t
 	fp = ksu_filp_open_compat(filename, flags, mode);
 	if (IS_ERR(fp)) {
 		if (enforcing) {
-			pr_info("%s: attempting with permissive\n");
+			pr_info(" attempting with permissive\n");
 			setenforce(false);
 			fp = ksu_filp_open_compat(filename, flags, mode);
 			setenforce(true);
