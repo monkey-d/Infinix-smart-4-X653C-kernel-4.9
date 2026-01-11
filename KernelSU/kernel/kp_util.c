@@ -12,6 +12,24 @@
 #include "kernel_compat.h"
 #include "kp_util.h"
 
+/*
+ * Compatibility macros for mmap locking API.
+ * mmap_read_trylock/mmap_read_unlock were introduced in kernel 5.8.
+ * For older kernels, use the semaphore-based API.
+ */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 8, 0)
+#define mmap_read_trylock(mm) down_read_trylock(&(mm)->mmap_sem)
+#define mmap_read_unlock(mm) up_read(&(mm)->mmap_sem)
+#endif
+
+/*
+ * untagged_addr is ARM64-specific for address tagging (TBI).
+ * For ARM 32-bit and other architectures, just return the address unchanged.
+ */
+#ifndef untagged_addr
+#define untagged_addr(addr) (addr)
+#endif
+
 static bool try_set_access_flag(unsigned long addr)
 {
 #if defined(CONFIG_ARM64) || defined(CONFIG_ARM)
