@@ -51,8 +51,7 @@
 
 //---Touch info.---
 #define TOUCH_DEFAULT_MAX_WIDTH 720
-#define TOUCH_DEFAULT_MAX_HEIGHT 1600
-#define TOUCH_FIRMWARE_INCORRECT_HEIGHT 1536  /* Incorrect height reported by firmware */
+#define TOUCH_DEFAULT_MAX_HEIGHT 1500
 #define TOUCH_MAX_FINGER_NUM 10
 #define TOUCH_KEY_NUM 0
 #if TOUCH_KEY_NUM > 0
@@ -61,7 +60,7 @@ extern const uint16_t touch_key_array[TOUCH_KEY_NUM];
 #define TOUCH_FORCE_NUM 1000
 
 /* Enable only when module have tp reset pin and connected to host */
-#define NVT_TOUCH_SUPPORT_HW_RST 1
+#define NVT_TOUCH_SUPPORT_HW_RST 0
 
 //---Customerized func.---
 #define NVT_TOUCH_PROC 1
@@ -153,16 +152,3 @@ extern void nvt_esd_check_enable(uint8_t enable);
 extern void nvt_stop_crc_reboot(void);
 
 #endif /* _LINUX_NVT_TOUCH_H */
-// Add after existing extern declarations (around line 145)
-
-/* GPIO fallback functions */
-extern void nvt_gpio_set_reset(int level);
-extern int nvt_check_i2c_ready(struct i2c_client *client);
-extern int nvt_power_on(struct nvt_ts_data *ts);
-
-/* Default memory map for fallback */
-extern const struct nvt_ts_mem_map NT36672A_memory_map;
-
-/* Increase retry counts for unstable connections */
-#define NVT_I2C_RETRY_COUNT     5
-#define NVT_RESET_RETRY_COUNT   3
