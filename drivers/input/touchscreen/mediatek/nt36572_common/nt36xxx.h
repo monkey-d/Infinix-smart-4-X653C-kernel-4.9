@@ -51,7 +51,7 @@
 
 //---Touch info.---
 #define TOUCH_DEFAULT_MAX_WIDTH 720
-#define TOUCH_DEFAULT_MAX_HEIGHT 1500
+#define TOUCH_DEFAULT_MAX_HEIGHT 1600
 #define TOUCH_MAX_FINGER_NUM 10
 #define TOUCH_KEY_NUM 0
 #if TOUCH_KEY_NUM > 0
@@ -60,7 +60,7 @@ extern const uint16_t touch_key_array[TOUCH_KEY_NUM];
 #define TOUCH_FORCE_NUM 1000
 
 /* Enable only when module have tp reset pin and connected to host */
-#define NVT_TOUCH_SUPPORT_HW_RST 0
+#define NVT_TOUCH_SUPPORT_HW_RST 1
 
 //---Customerized func.---
 #define NVT_TOUCH_PROC 1
