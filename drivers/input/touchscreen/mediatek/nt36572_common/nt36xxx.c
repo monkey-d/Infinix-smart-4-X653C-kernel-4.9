@@ -1424,17 +1424,39 @@ static int32_t nvt_ts_probe(struct i2c_client *client, const struct i2c_device_i
 
 	NVT_LOG("start\n");
 
-	ts = kmalloc(sizeof(struct nvt_ts_data), GFP_KERNEL);
-	if (ts == NULL) {
-		NVT_ERR("failed to allocated memory for nvt ts data\n");
-		return -ENOMEM;
-	}
+ ts = kzalloc(sizeof(struct nvt_ts_data), GFP_KERNEL);
+    if (!ts) {
+        NVT_ERR("failed to allocate driver data\n");
+        return -ENOMEM;
+    }
+
 
 	ts->client = client;
 	i2c_set_clientdata(client, ts);
 
+	#ifdef CONFIG_OF
+    if (client->dev.of_node) {
+        // Standard TPD framework (mtk_tpd.c) typically sets TPD_RES_X/Y globally.
+        // We sync our local driver variables with the global TPD variables.
+        ts->abs_x_max = TPD_RES_X;
+        ts->abs_y_max = TPD_RES_Y;
+        
+        // Fallback if TPD is 0 (safety check)
+        if (ts->abs_x_max == 0) ts->abs_x_max = 720;
+        if (ts->abs_y_max == 0) ts->abs_y_max = 1600;
+        
+        ts->max_touch_num = TOUCH_MAX_FINGER_NUM;
+    }
+#endif
+
 #if NVT_TOUCH_SUPPORT_HW_RST
-	NVT_GPIO_OUTPUT(GTP_RST_PORT, 1);
+    // Reset Sequence
+    tpd_gpio_output(0, 1); // High
+    msleep(10);
+    tpd_gpio_output(0, 0); // Low (Reset active)
+    msleep(10); // Keep low for at least 10ms
+    tpd_gpio_output(0, 1); // High (Release reset)
+    msleep(60); // Wait for IC to boot (Novatek usually needs ~50-60ms)
 #endif
 	//---request INT-pin---
 	NVT_GPIO_AS_INT(GTP_INT_PORT);
