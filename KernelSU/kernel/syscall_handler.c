@@ -231,13 +231,31 @@ static struct kretprobe *syscall_regfunc_rp = NULL;
 static struct kretprobe *syscall_unregfunc_rp = NULL;
 #endif
 
+/*
+ * ARM 32-bit uses different syscall numbers:
+ * - __NR_fstatat64 instead of __NR_newfstatat
+ * - __NR_setresuid32 for 32-bit UID operations
+ */
+#if defined(__arm__) && !defined(__aarch64__)
+#ifndef __NR_newfstatat
+#define __NR_newfstatat __NR_fstatat64
+#endif
+#ifndef KSU_NR_SETRESUID
+#define KSU_NR_SETRESUID __NR_setresuid32
+#endif
+#else
+#ifndef KSU_NR_SETRESUID
+#define KSU_NR_SETRESUID __NR_setresuid
+#endif
+#endif
+
 static inline bool check_syscall_fastpath(int nr)
 {
 	switch (nr) {
 	case __NR_newfstatat:
 	case __NR_faccessat:
 	case __NR_execve:
-	case __NR_setresuid:
+	case KSU_NR_SETRESUID:
 		return true;
 	default:
 		return false;
@@ -323,7 +341,7 @@ static void ksu_sys_enter_handler(void *data, struct pt_regs *regs, long id)
 		}
 
 		// Handle setresuid
-		if (id == __NR_setresuid) {
+		if (id == KSU_NR_SETRESUID) {
 			uid_t ruid = (uid_t)PT_REGS_PARM1(regs);
 			uid_t euid = (uid_t)PT_REGS_PARM2(regs);
 			uid_t suid = (uid_t)PT_REGS_PARM3(regs);
