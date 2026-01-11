@@ -9,11 +9,13 @@
 
 static bool try_set_access_flag(unsigned long addr)
 {
-#ifdef CONFIG_ARM64
+#if defined(CONFIG_ARM64) || defined(CONFIG_ARM)
 	struct mm_struct *mm = current->mm;
 	struct vm_area_struct *vma;
 	pgd_t *pgd;
+#ifdef CONFIG_ARM64
 	p4d_t *p4d;
+#endif
 	pud_t *pud;
 	pmd_t *pmd;
 	pte_t *ptep, pte;
@@ -34,11 +36,16 @@ static bool try_set_access_flag(unsigned long addr)
 	if (!pgd_present(*pgd))
 		goto out_unlock;
 
+#ifdef CONFIG_ARM64
 	p4d = p4d_offset(pgd, addr);
 	if (!p4d_present(*p4d))
 		goto out_unlock;
 
 	pud = pud_offset(p4d, addr);
+#else
+	/* ARM 32-bit doesn't have p4d level, go directly to pud */
+	pud = pud_offset((p4d_t *)pgd, addr);
+#endif
 	if (!pud_present(*pud))
 		goto out_unlock;
 
