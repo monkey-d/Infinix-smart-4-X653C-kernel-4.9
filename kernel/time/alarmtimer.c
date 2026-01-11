@@ -227,7 +227,7 @@ EXPORT_SYMBOL_GPL(alarm_expires_remaining);
 static int alarmtimer_suspend(struct device *dev)
 {
 	struct rtc_time tm, time;
-	ktime_t min, now, temp;
+	ktime_t min, now, temp = ktime_set(0, 0);
 	unsigned long flags;
 	struct rtc_device *rtc;
 	int i;
