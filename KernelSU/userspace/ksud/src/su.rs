@@ -1,100 +1,93 @@
-use anyhow::{Ok, Result};
-use getopts::Options;
-use std::env;
-#[cfg(unix)]
-use std::os::unix::process::CommandExt;
-use std::path::PathBuf;
-use std::{ffi::CStr, process::Command};
-
 use crate::{
     defs,
     utils::{self, umask},
 };
-
-#[cfg(any(target_os = "linux", target_os = "android"))]
-use rustix::{
-    process::getuid,
-    thread::{set_thread_res_gid, set_thread_res_uid, Gid, Uid},
+use anyhow::{Context, Ok, Result, bail};
+use getopts::Options;
+use libc::c_int;
+use log::error;
+use std::env;
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
+use std::path::PathBuf;
+use std::{
+    ffi::{CStr, CString},
+    process::Command,
 };
 
-#[cfg(any(target_os = "linux", target_os = "android"))]
+use crate::ksucalls::get_wrapped_fd;
+use rustix::{
+    process::getuid,
+    thread::{Gid, Uid, set_thread_res_gid, set_thread_res_uid},
+};
+
 pub fn grant_root(global_mnt: bool) -> Result<()> {
-    const KERNEL_SU_OPTION: u32 = 0xDEAD_BEEF;
-    const CMD_GRANT_ROOT: u64 = 0;
+    crate::ksucalls::grant_root()?;
 
-    let mut result: u32 = 0;
-    unsafe {
-        #[allow(clippy::cast_possible_wrap)]
-        libc::prctl(
-            KERNEL_SU_OPTION as i32, // supposed to overflow
-            CMD_GRANT_ROOT,
-            0,
-            0,
-            std::ptr::addr_of_mut!(result).cast::<libc::c_void>(),
-        );
-    }
-
-    anyhow::ensure!(result == KERNEL_SU_OPTION, "grant root failed");
-    let mut command = std::process::Command::new("sh");
+    let mut command = Command::new("sh");
     let command = unsafe {
         command.pre_exec(move || {
             if global_mnt {
                 let _ = utils::switch_mnt_ns(1);
-                let _ = utils::unshare_mnt_ns();
             }
-            std::result::Result::Ok(())
+            Result::Ok(())
         })
     };
     // add /data/adb/ksu/bin to PATH
-    #[cfg(any(target_os = "linux", target_os = "android"))]
     add_path_to_env(defs::BINARY_DIR)?;
     Err(command.exec().into())
 }
 
-#[cfg(not(any(target_os = "linux", target_os = "android")))]
-pub fn grant_root(_global_mnt: bool) -> Result<()> {
-    unimplemented!("grant_root is only available on android");
-}
-
-fn print_usage(program: &str, opts: Options) {
+fn print_usage(program: &str, opts: &Options) {
     let brief = format!("KernelSU\n\nUsage: {program} [options] [-] [user [argument...]]");
     print!("{}", opts.usage(&brief));
 }
 
 fn set_identity(uid: u32, gid: u32, groups: &[u32]) {
-    #[cfg(any(target_os = "linux", target_os = "android"))]
-    {
-        rustix::process::set_groups(
-            groups
-                .iter()
-                .map(|g| unsafe { Gid::from_raw(*g) })
-                .collect::<Vec<_>>()
-                .as_ref(),
-        )
-        .ok();
-        let gid = unsafe { Gid::from_raw(gid) };
-        let uid = unsafe { Uid::from_raw(uid) };
-        set_thread_res_gid(gid, gid, gid).ok();
-        set_thread_res_uid(uid, uid, uid).ok();
+    rustix::thread::set_thread_groups(
+        groups
+            .iter()
+            .map(|g| Gid::from_raw(*g))
+            .collect::<Vec<_>>()
+            .as_ref(),
+    )
+    .ok();
+    let gid = Gid::from_raw(gid);
+    let uid = Uid::from_raw(uid);
+    set_thread_res_gid(gid, gid, gid).ok();
+    set_thread_res_uid(uid, uid, uid).ok();
+}
+
+fn wrap_tty(fd: c_int) {
+    let inner_fn = move || -> Result<()> {
+        if unsafe { libc::isatty(fd) != 1 } {
+            return Ok(());
+        }
+        let new_fd = get_wrapped_fd(fd).context("get_wrapped_fd")?;
+        if unsafe { libc::dup2(new_fd, fd) } == -1 {
+            bail!("dup {new_fd} -> {fd} errno: {}", unsafe {
+                *libc::__errno()
+            });
+        }
+        unsafe { libc::close(new_fd) };
+        Ok(())
+    };
+
+    if let Err(e) = inner_fn() {
+        error!("wrap tty {fd}: {e:?}");
     }
 }
 
-#[cfg(not(any(target_os = "linux", target_os = "android")))]
-pub fn root_shell() -> Result<()> {
-    unimplemented!()
-}
-
-#[cfg(any(target_os = "linux", target_os = "android"))]
+#[allow(clippy::similar_names)]
 pub fn root_shell() -> Result<()> {
     // we are root now, this was set in kernel!
 
     use anyhow::anyhow;
-    let env_args: Vec<String> = std::env::args().collect();
+    let env_args: Vec<String> = env::args().collect();
     let program = env_args[0].clone();
-    let args = env_args
-        .iter()
-        .position(|arg| arg == "-c")
-        .map(|i| {
+    let args = env_args.iter().position(|arg| arg == "-c").map_or_else(
+        || env_args.clone(),
+        |i| {
             let rest = env_args[i + 1..].to_vec();
             let mut new_args = env_args[..i].to_vec();
             new_args.push("-c".to_string());
@@ -102,8 +95,8 @@ pub fn root_shell() -> Result<()> {
                 new_args.push(rest.join(" "));
             }
             new_args
-        })
-        .unwrap_or_else(|| env_args.clone());
+        },
+    );
 
     let mut opts = Options::new();
     opts.optopt(
@@ -119,10 +112,11 @@ pub fn root_shell() -> Result<()> {
         "preserve-environment",
         "preserve the entire environment",
     );
-    opts.optflag(
+    opts.optopt(
         "s",
         "shell",
         "use SHELL instead of the default /system/bin/sh",
+        "SHELL",
     );
     opts.optflag("v", "version", "display version number and exit");
     opts.optflag("V", "", "display version code and exit");
@@ -138,6 +132,7 @@ pub fn root_shell() -> Result<()> {
         "Specify a supplementary group. The first specified supplementary group is also used as a primary group if the option -g is not specified.",
         "GROUP",
     );
+    opts.optflag("W", "no-wrapper", "don't use ksu fd wrapper");
 
     // Replace -cn with -z, -mm with -M for supporting getopt_long
     let args = args
@@ -154,16 +149,16 @@ pub fn root_shell() -> Result<()> {
         .collect::<Vec<String>>();
 
     let matches = match opts.parse(&args[1..]) {
-        std::result::Result::Ok(m) => m,
+        Result::Ok(m) => m,
         Err(f) => {
             println!("{f}");
-            print_usage(&program, opts);
+            print_usage(&program, &opts);
             std::process::exit(-1);
         }
     };
 
     if matches.opt_present("h") {
-        print_usage(&program, opts);
+        print_usage(&program, &opts);
         return Ok(());
     }
 
@@ -177,21 +172,24 @@ pub fn root_shell() -> Result<()> {
         return Ok(());
     }
 
-    let shell = matches.opt_str("s").unwrap_or("/system/bin/sh".to_string());
+    let shell = matches
+        .opt_str("s")
+        .unwrap_or_else(|| "/system/bin/sh".to_string());
     let mut is_login = matches.opt_present("l");
     let preserve_env = matches.opt_present("p");
     let mount_master = matches.opt_present("M");
+    let use_fd_wrapper = !matches.opt_present("W");
 
     let groups = matches
         .opt_strs("G")
         .into_iter()
-        .map(|g| g.parse::<u32>().map_err(|_| anyhow!("Invalid GID: {}", g)))
+        .map(|g| g.parse::<u32>().map_err(|_| anyhow!("Invalid GID: {g}")))
         .collect::<Result<Vec<_>, _>>()?;
 
     // if -g provided, use it.
     let mut gid = matches
         .opt_str("g")
-        .map(|g| g.parse::<u32>().map_err(|_| anyhow!("Invalid GID: {}", g)))
+        .map(|g| g.parse::<u32>().map_err(|_| anyhow!("Invalid GID: {g}")))
         .transpose()?;
 
     // otherwise, use the first gid of groups.
@@ -216,15 +214,11 @@ pub fn root_shell() -> Result<()> {
     if free_idx < matches.free.len() {
         let name = &matches.free[free_idx];
         uid = unsafe {
-            #[cfg(target_arch = "aarch64")]
-            let pw = libc::getpwnam(name.as_ptr()).as_ref();
-            #[cfg(target_arch = "x86_64")]
-            let pw = libc::getpwnam(name.as_ptr() as *const i8).as_ref();
+            let pw = CString::new(name.as_str())
+                .ok()
+                .and_then(|c_name| libc::getpwnam(c_name.as_ptr()).as_ref());
 
-            match pw {
-                Some(pw) => pw.pw_uid,
-                None => name.parse::<u32>().unwrap_or(0),
-            }
+            pw.map_or_else(|| name.parse::<u32>().unwrap_or(0), |pw| pw.pw_uid)
         }
     }
 
@@ -257,7 +251,6 @@ pub fn root_shell() -> Result<()> {
     }
 
     // add /data/adb/ksu/bin to PATH
-    #[cfg(any(target_os = "linux", target_os = "android"))]
     add_path_to_env(defs::BINARY_DIR)?;
 
     // when KSURC_PATH exists and ENV is not set, set ENV to KSURC_PATH
@@ -274,15 +267,19 @@ pub fn root_shell() -> Result<()> {
             utils::switch_cgroups();
 
             // switch to global mount namespace
-            #[cfg(any(target_os = "linux", target_os = "android"))]
             if mount_master {
                 let _ = utils::switch_mnt_ns(1);
-                let _ = utils::unshare_mnt_ns();
+            }
+
+            if use_fd_wrapper {
+                wrap_tty(0);
+                wrap_tty(1);
+                wrap_tty(2);
             }
 
             set_identity(uid, gid, &groups);
 
-            std::result::Result::Ok(())
+            Result::Ok(())
         })
     };
 
@@ -296,6 +293,6 @@ fn add_path_to_env(path: &str) -> Result<()> {
     let new_path = PathBuf::from(path.trim_end_matches('/'));
     paths.push(new_path);
     let new_path_env = env::join_paths(paths)?;
-    env::set_var("PATH", new_path_env);
+    unsafe { env::set_var("PATH", new_path_env) };
     Ok(())
 }

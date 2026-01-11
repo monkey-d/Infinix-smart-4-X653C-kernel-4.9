@@ -16,11 +16,9 @@ object Natives {
     // 10946: add capabilities
     // 10977: change groups_count and groups to avoid overflow write
     // 11071: Fix the issue of failing to set a custom SELinux type.
-    const val MINIMAL_SUPPORTED_KERNEL = 11071
+    // 12143: breaking: new supercall impl
+    const val MINIMAL_SUPPORTED_KERNEL = 22000
 
-    // 11640: Support query working mode, LKM or GKI
-    // when MINIMAL_SUPPORTED_KERNEL > 11640, we can remove this constant.
-    const val MINIMAL_SUPPORTED_KERNEL_LKM = 11648
     const val KERNEL_SU_DOMAIN = "u:r:su:s0"
 
     const val ROOT_UID = 0
@@ -30,8 +28,6 @@ object Natives {
         System.loadLibrary("kernelsu")
     }
 
-    // become root manager, return true if success.
-    external fun becomeManager(pkg: String?): Boolean
     val version: Int
         external get
 
@@ -45,6 +41,9 @@ object Natives {
     val isLkmMode: Boolean
         external get
 
+    val isManager: Boolean
+        external get
+
     external fun uidShouldUmount(uid: Int): Boolean
 
     /**
@@ -54,6 +53,29 @@ object Natives {
      */
     external fun getAppProfile(key: String?, uid: Int): Profile
     external fun setAppProfile(profile: Profile?): Boolean
+
+    /**
+     * `su` compat mode can be disabled temporarily.
+     *  0: disabled
+     *  1: enabled
+     *  negative : error
+     */
+    external fun isSuEnabled(): Boolean
+    external fun setSuEnabled(enabled: Boolean): Boolean
+
+    /**
+     * Kernel module umount can be disabled temporarily.
+     *  0: disabled
+     *  1: enabled
+     *  negative : error
+     */
+    external fun isKernelUmountEnabled(): Boolean
+    external fun setKernelUmountEnabled(enabled: Boolean): Boolean
+
+    /**
+     * Get the user name for the uid.
+     */
+    external fun getUserName(uid: Int): String?
 
     private const val NON_ROOT_DEFAULT_PROFILE_KEY = "$"
     private const val NOBODY_UID = 9999
@@ -76,7 +98,7 @@ object Natives {
     }
 
     fun requireNewKernel(): Boolean {
-        return version < MINIMAL_SUPPORTED_KERNEL
+        return version != -1 && version < MINIMAL_SUPPORTED_KERNEL
     }
 
     @Immutable

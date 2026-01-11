@@ -1,66 +1,107 @@
 package me.weishu.kernelsu.ui.screen
 
+import android.annotation.SuppressLint
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.provider.OpenableColumns
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
-import androidx.compose.foundation.clickable
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.add
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.captionBar
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.FileUpload
-import androidx.compose.material3.Button
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import com.maxkeppeker.sheets.core.models.base.Header
-import com.maxkeppeker.sheets.core.models.base.rememberUseCaseState
-import com.maxkeppeler.sheets.list.ListDialog
-import com.maxkeppeler.sheets.list.models.ListOption
-import com.maxkeppeler.sheets.list.models.ListSelection
+import androidx.lifecycle.compose.dropUnlessResumed
 import com.ramcosta.composedestinations.annotation.Destination
+import com.ramcosta.composedestinations.annotation.RootGraph
+import com.ramcosta.composedestinations.generated.destinations.FlashScreenDestination
 import com.ramcosta.composedestinations.navigation.DestinationsNavigator
-import com.ramcosta.composedestinations.navigation.EmptyDestinationsNavigator
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeStyle
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.hazeEffect
+import dev.chrisbanes.haze.hazeSource
 import me.weishu.kernelsu.R
-import me.weishu.kernelsu.ui.component.DialogHandle
+import me.weishu.kernelsu.ui.component.ChooseKmiDialog
 import me.weishu.kernelsu.ui.component.rememberConfirmDialog
-import me.weishu.kernelsu.ui.component.rememberCustomDialog
-import me.weishu.kernelsu.ui.screen.destinations.FlashScreenDestination
 import me.weishu.kernelsu.ui.util.LkmSelection
+import me.weishu.kernelsu.ui.util.getAvailablePartitions
 import me.weishu.kernelsu.ui.util.getCurrentKmi
-import me.weishu.kernelsu.ui.util.getSupportedKmis
+import me.weishu.kernelsu.ui.util.getDefaultPartition
+import me.weishu.kernelsu.ui.util.getSlotSuffix
 import me.weishu.kernelsu.ui.util.isAbDevice
-import me.weishu.kernelsu.ui.util.isInitBoot
 import me.weishu.kernelsu.ui.util.rootAvailable
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
+import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
+import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.ScrollBehavior
+import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.basic.TopAppBar
+import top.yukonga.miuix.kmp.extra.SuperArrow
+import top.yukonga.miuix.kmp.extra.SuperCheckbox
+import top.yukonga.miuix.kmp.extra.SuperDropdown
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Back
+import top.yukonga.miuix.kmp.icon.extended.ConvertFile
+import top.yukonga.miuix.kmp.icon.extended.MoveFile
+import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.theme.MiuixTheme.colorScheme
+import top.yukonga.miuix.kmp.utils.overScrollVertical
+import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 
 /**
  * @author weishu
  * @date 2024/3/12.
  */
-@Destination
+@SuppressLint("LocalContextGetResourceValueCall")
 @Composable
+@Destination<RootGraph>
 fun InstallScreen(navigator: DestinationsNavigator) {
+    val context = LocalContext.current
     var installMethod by remember {
         mutableStateOf<InstallMethod?>(null)
     }
@@ -69,20 +110,30 @@ fun InstallScreen(navigator: DestinationsNavigator) {
         mutableStateOf<LkmSelection>(LkmSelection.KmiNone)
     }
 
+    var partitionSelectionIndex by remember { mutableIntStateOf(0) }
+    var partitionsState by remember { mutableStateOf<List<String>>(emptyList()) }
+    var hasCustomSelected by remember { mutableStateOf(false) }
+
     val onInstall = {
         installMethod?.let { method ->
+            val isOta = method is InstallMethod.DirectInstallToInactiveSlot
+            val partitionSelection = partitionsState.getOrNull(partitionSelectionIndex)
             val flashIt = FlashIt.FlashBoot(
                 boot = if (method is InstallMethod.SelectFile) method.uri else null,
                 lkm = lkmSelection,
-                ota = method is InstallMethod.DirectInstallToInactiveSlot
+                ota = isOta,
+                partition = partitionSelection
             )
-            navigator.navigate(FlashScreenDestination(flashIt))
+            navigator.navigate(FlashScreenDestination(flashIt)) {
+                launchSingleTop = true
+            }
         }
     }
 
     val currentKmi by produceState(initialValue = "") { value = getCurrentKmi() }
 
-    val selectKmiDialog = rememberSelectKmiDialog { kmi ->
+    val showChooseKmiDialog = rememberSaveable { mutableStateOf(false) }
+    val chooseKmiDialog = ChooseKmiDialog(showChooseKmiDialog) { kmi ->
         kmi?.let {
             lkmSelection = LkmSelection.KmiString(it)
             onInstall()
@@ -92,7 +143,8 @@ fun InstallScreen(navigator: DestinationsNavigator) {
     val onClickNext = {
         if (lkmSelection == LkmSelection.KmiNone && currentKmi.isBlank()) {
             // no lkm file selected and cannot get current kmi
-            selectKmiDialog.show()
+            showChooseKmiDialog.value = true
+            chooseKmiDialog
         } else {
             onInstall()
         }
@@ -102,7 +154,17 @@ fun InstallScreen(navigator: DestinationsNavigator) {
         rememberLauncherForActivityResult(contract = ActivityResultContracts.StartActivityForResult()) {
             if (it.resultCode == Activity.RESULT_OK) {
                 it.data?.data?.let { uri ->
-                    lkmSelection = LkmSelection.LkmUri(uri)
+                    val isKo = isKoFile(context, uri)
+                    if (isKo) {
+                        lkmSelection = LkmSelection.LkmUri(uri)
+                    } else {
+                        lkmSelection = LkmSelection.KmiNone
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.install_only_support_ko_file),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
                 }
             }
         }
@@ -113,39 +175,130 @@ fun InstallScreen(navigator: DestinationsNavigator) {
         })
     }
 
-    Scaffold(topBar = {
-        TopBar(
-            onBack = { navigator.popBackStack() }, onLkmUpload = onLkmUpload
-        )
-    }) {
-        Column(modifier = Modifier.padding(it)) {
-            SelectInstallMethod { method ->
-                installMethod = method
-            }
+    val scrollBehavior = MiuixScrollBehavior()
+    val hazeState = remember { HazeState() }
+    val hazeStyle = HazeStyle(
+        backgroundColor = colorScheme.surface,
+        tint = HazeTint(colorScheme.surface.copy(0.8f))
+    )
 
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp)
-            ) {
-                (lkmSelection as? LkmSelection.LkmUri)?.let {
-                    Text(
-                        stringResource(
-                            id = R.string.selected_lkm,
-                            it.uri.lastPathSegment ?: "(file)"
+    Scaffold(
+        topBar = {
+            TopBar(
+                onBack = dropUnlessResumed { navigator.popBackStack() },
+                scrollBehavior = scrollBehavior,
+                hazeState = hazeState,
+                hazeStyle = hazeStyle,
+            )
+        },
+        popupHost = { },
+        contentWindowInsets = WindowInsets.systemBars.add(WindowInsets.displayCutout).only(WindowInsetsSides.Horizontal)
+    ) { innerPadding ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxHeight()
+                .scrollEndHaptic()
+                .overScrollVertical()
+                .nestedScroll(scrollBehavior.nestedScrollConnection)
+                .hazeSource(state = hazeState)
+                .padding(top = 12.dp)
+                .padding(horizontal = 16.dp),
+            contentPadding = innerPadding,
+            overscrollEffect = null,
+        ) {
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth(),
+                ) {
+                    SelectInstallMethod { method ->
+                        installMethod = method
+                    }
+                }
+                AnimatedVisibility(
+                    visible = installMethod is InstallMethod.DirectInstall || installMethod is InstallMethod.DirectInstallToInactiveSlot,
+                    enter = expandVertically(),
+                    exit = shrinkVertically()
+                ) {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 12.dp),
+                    ) {
+                        val isOta = installMethod is InstallMethod.DirectInstallToInactiveSlot
+                        val suffix = produceState(initialValue = "", isOta) {
+                            value = getSlotSuffix(isOta)
+                        }.value
+                        val partitions = produceState(initialValue = emptyList()) {
+                            value = getAvailablePartitions()
+                        }.value
+                        val defaultPartition = produceState(initialValue = "") {
+                            value = getDefaultPartition()
+                        }.value
+                        partitionsState = partitions
+                        val displayPartitions = partitions.map { name ->
+                            if (defaultPartition == name) "$name (default)" else name
+                        }
+                        val defaultIndex = partitions.indexOf(defaultPartition).takeIf { it >= 0 } ?: 0
+                        if (!hasCustomSelected) partitionSelectionIndex = defaultIndex
+                        SuperDropdown(
+                            items = displayPartitions,
+                            selectedIndex = partitionSelectionIndex,
+                            title = "${stringResource(R.string.install_select_partition)} (${suffix})",
+                            onSelectedIndexChange = { index ->
+                                hasCustomSelected = true
+                                partitionSelectionIndex = index
+                            },
+                            startAction = {
+                                Icon(
+                                    MiuixIcons.ConvertFile,
+                                    tint = colorScheme.onSurface,
+                                    modifier = Modifier.padding(end = 16.dp),
+                                    contentDescription = null
+                                )
+                            }
                         )
+                    }
+                }
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp),
+                ) {
+                    SuperArrow(
+                        title = stringResource(id = R.string.install_upload_lkm_file),
+                        summary = (lkmSelection as? LkmSelection.LkmUri)?.let {
+                            stringResource(
+                                id = R.string.selected_lkm,
+                                it.uri.lastPathSegment ?: "(file)"
+                            )
+                        },
+                        onClick = onLkmUpload,
+                        startAction = {
+                            Icon(
+                                MiuixIcons.MoveFile,
+                                tint = colorScheme.onSurface,
+                                modifier = Modifier.padding(end = 16.dp),
+                                contentDescription = null
+                            )
+                        }
                     )
                 }
-                Button(modifier = Modifier.fillMaxWidth(),
+                TextButton(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp),
+                    text = stringResource(id = R.string.install_next),
                     enabled = installMethod != null,
-                    onClick = {
-                        onClickNext()
-                    }) {
-                    Text(
-                        stringResource(id = R.string.install_next),
-                        fontSize = MaterialTheme.typography.bodyMedium.fontSize
+                    colors = ButtonDefaults.textButtonColorsPrimary(),
+                    onClick = { onClickNext() }
+                )
+                Spacer(
+                    Modifier.height(
+                        WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() +
+                                WindowInsets.captionBar.asPaddingValues().calculateBottomPadding()
                     )
-                }
+                )
             }
         }
     }
@@ -154,7 +307,7 @@ fun InstallScreen(navigator: DestinationsNavigator) {
 sealed class InstallMethod {
     data class SelectFile(
         val uri: Uri? = null,
-        @StringRes override val label: Int = R.string.select_file,
+        @get:StringRes override val label: Int = R.string.select_file,
         override val summary: String?
     ) : InstallMethod()
 
@@ -175,12 +328,16 @@ sealed class InstallMethod {
 @Composable
 private fun SelectInstallMethod(onSelected: (InstallMethod) -> Unit = {}) {
     val rootAvailable = rootAvailable()
-    val isAbDevice = isAbDevice()
+    val isAbDevice = produceState(initialValue = false) {
+        value = isAbDevice()
+    }.value
+    val defaultPartitionName = produceState(initialValue = "boot") {
+        value = getDefaultPartition()
+    }.value
     val selectFileTip = stringResource(
-        id = R.string.select_file_tip, if (isInitBoot()) "init_boot" else "boot"
+        id = R.string.select_file_tip, defaultPartitionName
     )
-    val radioOptions =
-        mutableListOf<InstallMethod>(InstallMethod.SelectFile(summary = selectFileTip))
+    val radioOptions = mutableListOf<InstallMethod>(InstallMethod.SelectFile(summary = selectFileTip))
     if (rootAvailable) {
         radioOptions.add(InstallMethod.DirectInstall)
 
@@ -202,10 +359,12 @@ private fun SelectInstallMethod(onSelected: (InstallMethod) -> Unit = {}) {
         }
     }
 
-    val confirmDialog = rememberConfirmDialog(onConfirm = {
-        selectedOption = InstallMethod.DirectInstallToInactiveSlot
-        onSelected(InstallMethod.DirectInstallToInactiveSlot)
-    }, onDismiss = null)
+    val confirmDialog = rememberConfirmDialog(
+        onConfirm = {
+            selectedOption = InstallMethod.DirectInstallToInactiveSlot
+            onSelected(InstallMethod.DirectInstallToInactiveSlot)
+        }
+    )
     val dialogTitle = stringResource(id = android.R.string.dialog_alert_title)
     val dialogContent = stringResource(id = R.string.install_inactive_slot_warning)
 
@@ -231,81 +390,95 @@ private fun SelectInstallMethod(onSelected: (InstallMethod) -> Unit = {}) {
 
     Column {
         radioOptions.forEach { option ->
-            Row(verticalAlignment = Alignment.CenterVertically,
+            val interactionSource = remember { MutableInteractionSource() }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable {
-                        onClick(option)
-                    }) {
-                RadioButton(selected = option.javaClass == selectedOption?.javaClass, onClick = {
-                    onClick(option)
-                })
-                Column {
-                    Text(
-                        text = stringResource(id = option.label),
-                        fontSize = MaterialTheme.typography.titleMedium.fontSize,
-                        fontFamily = MaterialTheme.typography.titleMedium.fontFamily,
-                        fontStyle = MaterialTheme.typography.titleMedium.fontStyle
+                    .toggleable(
+                        value = option.javaClass == selectedOption?.javaClass,
+                        onValueChange = {
+                            onClick(option)
+                        },
+                        role = Role.RadioButton,
+                        indication = LocalIndication.current,
+                        interactionSource = interactionSource
                     )
-                    option.summary?.let {
-                        Text(
-                            text = it,
-                            fontSize = MaterialTheme.typography.bodySmall.fontSize,
-                            fontFamily = MaterialTheme.typography.bodySmall.fontFamily,
-                            fontStyle = MaterialTheme.typography.bodySmall.fontStyle
-                        )
-                    }
-                }
+            ) {
+                SuperCheckbox(
+                    title = stringResource(id = option.label),
+                    summary = option.summary,
+                    checked = option.javaClass == selectedOption?.javaClass,
+                    onCheckedChange = {
+                        onClick(option)
+                    },
+                )
             }
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun rememberSelectKmiDialog(onSelected: (String?) -> Unit): DialogHandle {
-    return rememberCustomDialog { dismiss ->
-        val supportedKmi by produceState(initialValue = emptyList<String>()) {
-            value = getSupportedKmis()
-        }
-        val options = supportedKmi.map { value ->
-            ListOption(
-                titleText = value
-            )
-        }
+private fun TopBar(
+    onBack: () -> Unit = {},
+    scrollBehavior: ScrollBehavior,
+    hazeState: HazeState,
+    hazeStyle: HazeStyle,
+) {
+    val blurEnabled = me.weishu.kernelsu.ui.util.LocalBlurEnabled.current
+    TopAppBar(
+        modifier = if (blurEnabled) {
+            Modifier.hazeEffect(hazeState) {
+                style = hazeStyle
+                blurRadius = me.weishu.kernelsu.ui.util.blurRadius(blurEnabled)
+                noiseFactor = 0f
+            }
+        } else {
+            Modifier
+        },
+        color = if (blurEnabled) Color.Transparent else MiuixTheme.colorScheme.surface,
+        title = stringResource(R.string.install),
+        navigationIcon = {
+            IconButton(
+                modifier = Modifier.padding(start = 16.dp),
+                onClick = onBack
+            ) {
+                val layoutDirection = LocalLayoutDirection.current
+                Icon(
+                    modifier = Modifier.graphicsLayer {
+                        if (layoutDirection == LayoutDirection.Rtl) scaleX = -1f
+                    },
+                    imageVector = MiuixIcons.Back,
+                    tint = colorScheme.onSurface,
+                    contentDescription = null,
+                )
+            }
+        },
+        scrollBehavior = scrollBehavior
+    )
+}
 
-        var selection by remember { mutableStateOf<String?>(null) }
-        ListDialog(state = rememberUseCaseState(visible = true, onFinishedRequest = {
-            onSelected(selection)
-        }, onCloseRequest = {
-            dismiss()
-        }), header = Header.Default(
-            title = stringResource(R.string.select_kmi),
-        ), selection = ListSelection.Single(
-            showRadioButtons = true,
-            options = options,
-        ) { _, option ->
-            selection = option.titleText
-        })
+private fun isKoFile(context: Context, uri: Uri): Boolean {
+    val seg = uri.lastPathSegment ?: ""
+    if (seg.endsWith(".ko", ignoreCase = true)) return true
+
+    return try {
+        context.contentResolver.query(
+            uri,
+            arrayOf(OpenableColumns.DISPLAY_NAME),
+            null,
+            null,
+            null
+        )?.use { cursor ->
+            val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+            if (idx != -1 && cursor.moveToFirst()) {
+                val name = cursor.getString(idx)
+                name?.endsWith(".ko", ignoreCase = true) == true
+            } else {
+                false
+            }
+        } ?: false
+    } catch (_: Throwable) {
+        false
     }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun TopBar(onBack: () -> Unit = {}, onLkmUpload: () -> Unit = {}) {
-    TopAppBar(title = { Text(stringResource(R.string.install)) }, navigationIcon = {
-        IconButton(
-            onClick = onBack
-        ) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null) }
-    }, actions = {
-        IconButton(onClick = onLkmUpload) {
-            Icon(Icons.Filled.FileUpload, contentDescription = null)
-        }
-    })
-}
-
-@Composable
-@Preview
-fun SelectInstall_Preview() {
-    InstallScreen(EmptyDestinationsNavigator)
 }

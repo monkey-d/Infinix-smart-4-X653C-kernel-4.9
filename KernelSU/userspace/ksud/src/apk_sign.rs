@@ -1,4 +1,4 @@
-use anyhow::{ensure, Result};
+use anyhow::{Result, ensure};
 use std::io::{Read, Seek, SeekFrom};
 
 pub fn get_apk_signature(apk: &str) -> Result<(u32, String)> {
@@ -84,7 +84,7 @@ pub fn get_apk_signature(apk: &str) -> Result<(u32, String)> {
         return Err(anyhow::anyhow!("Unexpected v3 signature found!",));
     }
 
-    v2_signing.ok_or(anyhow::anyhow!("No signature found!"))
+    v2_signing.ok_or_else(|| anyhow::anyhow!("No signature found!"))
 }
 
 fn calc_cert_sha256(
