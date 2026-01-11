@@ -1,5 +1,10 @@
+#include <linux/version.h>
 #include <linux/mm.h>
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 8, 0)
 #include <linux/pgtable.h>
+#else
+#include <asm/pgtable.h>
+#endif
 #include <linux/printk.h>
 #include <linux/preempt.h>
 #include <asm/current.h>
@@ -7,13 +12,34 @@
 #include "kernel_compat.h"
 #include "kp_util.h"
 
+/*
+ * Compatibility macros for mmap locking API.
+ * mmap_read_trylock/mmap_read_unlock were introduced in kernel 5.8.
+ * For older kernels, use the semaphore-based API.
+ */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5, 8, 0)
+#define mmap_read_trylock(mm) down_read_trylock(&(mm)->mmap_sem)
+#define mmap_read_unlock(mm) up_read(&(mm)->mmap_sem)
+#endif
+
+/*
+ * untagged_addr is ARM64-specific for address tagging (TBI).
+ * For ARM 32-bit and other architectures, just return the address unchanged.
+ */
+#ifndef untagged_addr
+#define untagged_addr(addr) (addr)
+#endif
+
 static bool try_set_access_flag(unsigned long addr)
 {
-#ifdef CONFIG_ARM64
+  #if defined(CONFIG_ARM64) || defined(CONFIG_ARM)
+	
 	struct mm_struct *mm = current->mm;
 	struct vm_area_struct *vma;
 	pgd_t *pgd;
+#if defined(CONFIG_ARM64) && LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)
 	p4d_t *p4d;
+#endif
 	pud_t *pud;
 	pmd_t *pmd;
 	pte_t *ptep, pte;
@@ -34,11 +60,23 @@ static bool try_set_access_flag(unsigned long addr)
 	if (!pgd_present(*pgd))
 		goto out_unlock;
 
+#if defined(CONFIG_ARM64) && LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)
+
 	p4d = p4d_offset(pgd, addr);
 	if (!p4d_present(*p4d))
 		goto out_unlock;
 
 	pud = pud_offset(p4d, addr);
+
+#else
+	/*
+	 * ARM 32-bit and older kernels don't have p4d level (5-level page tables).
+	 * The pud is folded into pgd, so pud_offset takes pgd directly.
+	 * On systems with folded page tables, pud_offset expects pgd_t*.
+	 */
+	pud = pud_offset(pgd, addr);
+#endif
+	
 	if (!pud_present(*pud))
 		goto out_unlock;
 
