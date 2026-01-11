@@ -43,7 +43,12 @@ static bool try_set_access_flag(unsigned long addr)
 
 	pud = pud_offset(p4d, addr);
 #else
-	/* ARM 32-bit doesn't have p4d level, go directly to pud */
+	/*
+	 * ARM 32-bit doesn't have p4d level (5-level page tables).
+	 * The pgd directly maps to pud, so we cast pgd to p4d_t* to use
+	 * pud_offset(). This is safe because on 32-bit ARM, pgd_t and
+	 * p4d_t are effectively the same (folded page table level).
+	 */
 	pud = pud_offset((p4d_t *)pgd, addr);
 #endif
 	if (!pud_present(*pud))
