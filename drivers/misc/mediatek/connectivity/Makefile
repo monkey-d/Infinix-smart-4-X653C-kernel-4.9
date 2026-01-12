@@ -17,20 +17,36 @@
 ifneq ($(KERNELRELEASE),)
     subdir-ccflags-y += -I$(srctree)/
     subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/base/power/include
-    subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/base/power/include/clkbuf_v1
+    subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/clkbuf/src
     subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/base/power/include/clkbuf_v1/$(MTK_PLATFORM)
     subdir-ccflags-y += -Werror -I$(srctree)/drivers/misc/mediatek/include/mt-plat/$(MTK_PLATFORM)/include
     subdir-ccflags-y += -Werror -I$(srctree)/drivers/misc/mediatek/include/mt-plat
     subdir-ccflags-y += -I$(srctree)/drivers/mmc/core
     subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/eccci/$(MTK_PLATFORM)
     subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/eccci/
+    subdir-ccflags-y += -I$(srctree)/drivers/clk/mediatek/
+    subdir-ccflags-y += -I$(srctree)/drivers/pinctrl/mediatek/
 
     # Do Nothing, move to standalone repo
     MODULE_NAME := connadp
-    obj-y += $(MODULE_NAME).o
+    obj-$(CONFIG_MTK_COMBO) += $(MODULE_NAME).o
+
     $(MODULE_NAME)-objs += common/connectivity_build_in_adapter.o
     $(MODULE_NAME)-objs += common/wmt_build_in_adapter.o
 
+    ifeq ($(CONFIG_MTK_COMBO), y)
+        ccflags-y += -D CFG_CONNADP_BUILD_IN
+    endif
+
+    # for gen4m options
+    export CONFIG_MTK_COMBO_WIFI_HIF=axi
+    export MTK_COMBO_CHIP=CONNAC
+    ifeq ($(CONFIG_MTK_COMBO_CHIP_CONSYS_6761),y)
+        export WLAN_CHIP_ID=6761
+    else
+        export WLAN_CHIP_ID=6765
+    endif
+    export MTK_ANDROID_WMT=y
 
     # Do build-in for Makefile checking
     # export CONFIG_WLAN_DRV_BUILD_IN=y
@@ -67,12 +83,6 @@ ifneq ($(KERNELRELEASE),)
         $(shell ln -s $(ABS_PATH_TO_WLAN_CHR_DRV) $(srctree)/$(src)/wmt_chrdev_wifi)
         $(shell ln -s $(ABS_PATH_TO_WLAN_DRV)     $(srctree)/$(src)/wlan_drv_gen4m)
 
-        # for gen4m options
-        export CONFIG_MTK_COMBO_WIFI_HIF=axi
-        export MTK_COMBO_CHIP=CONNAC
-        export WLAN_CHIP_ID=6765
-        export MTK_ANDROID_WMT=y
-
         # Do build-in for xxx.c checking
         subdir-ccflags-y += -D MTK_WCN_REMOVE_KERNEL_MODULE
         subdir-ccflags-y += -D MTK_WCN_BUILT_IN_DRIVER
@@ -80,6 +90,14 @@ ifneq ($(KERNELRELEASE),)
         obj-y += wmt_chrdev_wifi/
         obj-y += wlan_drv_gen4m/
     endif
+
+    obj-$(CONFIG_MTK_COMBO) += common/
+    obj-$(CONFIG_MTK_COMBO_WIFI) += wlan/adaptor/
+    obj-$(CONFIG_MTK_COMBO_CHIP_CONSYS_6765) += wlan/core/gen4m/
+    obj-$(CONFIG_MTK_COMBO_CHIP_CONSYS_6761) += wlan/core/gen4m/
+    obj-$(CONFIG_MTK_BTIF) += bt/mt66xx/legacy/
+    obj-$(CONFIG_MTK_COMBO_GPS) += gps/
+    obj-$(CONFIG_MTK_FMRADIO) += fmradio/
 
 # Otherwise we were called directly from the command line;
 # invoke the kernel build system.

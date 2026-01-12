@@ -1,14 +1,6 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) 2016 MediaTek Inc.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
+ * Copyright (c) 2019 MediaTek Inc.
  */
 
 #ifndef WMT_BUILD_IN_ADAPTER_H
@@ -21,10 +13,12 @@
  * Bridging from platform -> wmt_drv.ko
  ******************************************************************************/
 typedef int (*wmt_bridge_thermal_query_cb)(void);
+typedef int (*wmt_bridge_trigger_assert_cb)(void);
 typedef void (*wmt_bridge_connsys_clock_fail_dump_cb)(void);
 
 struct wmt_platform_bridge {
 	wmt_bridge_thermal_query_cb thermal_query_cb;
+	wmt_bridge_trigger_assert_cb trigger_assert_cb;
 	wmt_bridge_connsys_clock_fail_dump_cb clock_fail_dump_cb;
 };
 
@@ -43,4 +37,3 @@ void wmt_export_mtk_wcn_cmb_sdio_disable_eirq(void);
 int wmt_export_mtk_wcn_sdio_irq_flag_set(int flag);
 
 #endif /* WMT_BUILD_IN_ADAPTER_H */
-

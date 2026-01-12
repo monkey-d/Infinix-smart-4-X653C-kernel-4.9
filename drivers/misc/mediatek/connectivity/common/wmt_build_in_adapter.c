@@ -1,16 +1,7 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (C) 2016 MediaTek Inc.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
+ * Copyright (c) 2019 MediaTek Inc.
  */
-/*#define pr_fmt(fmt) KBUILD_MODNAME ": %s: " fmt, __func__*/
 #include <linux/kernel.h>
 
 #include "wmt_build_in_adapter.h"
@@ -39,27 +30,27 @@ static unsigned int gConnAdpDbgLvl = CONNADP_LOG_INFO;
 #define CONNADP_LOUD_FUNC(fmt, arg...) \
 do { \
 	if (gConnAdpDbgLvl >= CONNADP_LOG_LOUD) \
-		pr_info("[L]%s:"  fmt, __func__, ##arg); \
+		pr_debug("[L]%s:"  fmt, __func__, ##arg); \
 } while (0)
 #define CONNADP_DBG_FUNC(fmt, arg...) \
 do { \
 	if (gConnAdpDbgLvl >= CONNADP_LOG_DBG) \
-		pr_info("[D]%s:"  fmt, __func__, ##arg); \
+		pr_debug("[D]%s:"  fmt, __func__, ##arg); \
 } while (0)
 #define CONNADP_INFO_FUNC(fmt, arg...)  \
 do { \
 	if (gConnAdpDbgLvl >= CONNADP_LOG_INFO) \
-		pr_info("[I]%s:"  fmt, __func__, ##arg); \
+		pr_debug("[I]%s:"  fmt, __func__, ##arg); \
 } while (0)
 #define CONNADP_WARN_FUNC(fmt, arg...) \
 do { \
 	if (gConnAdpDbgLvl >= CONNADP_LOG_WARN) \
-		pr_info("[W]%s:"  fmt, __func__, ##arg); \
+		pr_debug("[W]%s:"  fmt, __func__, ##arg); \
 } while (0)
 #define CONNADP_ERR_FUNC(fmt, arg...) \
 do { \
 	if (gConnAdpDbgLvl >= CONNADP_LOG_ERR) \
-		pr_info("[E]%s(%d):"  fmt, __func__, __LINE__, ##arg); \
+		pr_debug("[E]%s(%d):"  fmt, __func__, __LINE__, ##arg); \
 } while (0)
 
 
@@ -73,6 +64,7 @@ void wmt_export_platform_bridge_register(struct wmt_platform_bridge *cb)
 	if (unlikely(!cb))
 		return;
 	bridge.thermal_query_cb = cb->thermal_query_cb;
+	bridge.trigger_assert_cb = cb->trigger_assert_cb;
 	bridge.clock_fail_dump_cb = cb->clock_fail_dump_cb;
 	CONNADP_INFO_FUNC("\n");
 }
@@ -93,6 +85,18 @@ int mtk_wcn_cmb_stub_query_ctrl(void)
 		return -1;
 	} else
 		return bridge.thermal_query_cb();
+}
+
+int mtk_wcn_cmb_stub_trigger_assert(void)
+{
+	CONNADP_DBG_FUNC("\n");
+	/* dump backtrace for checking assert reason */
+	dump_stack();
+	if (unlikely(!bridge.trigger_assert_cb)) {
+		CONNADP_WARN_FUNC("Trigger assert not registered\n");
+		return -1;
+	} else
+		return bridge.trigger_assert_cb();
 }
 
 void mtk_wcn_cmb_stub_clock_fail_dump(void)
@@ -178,7 +182,7 @@ static void mtk_wcn_cmb_sdio_request_eirq(msdc_sdio_irq_handler_t irq_handler,
 	mtk_wcn_cmb_sdio_eirq_handler = irq_handler;
 
 	node = (struct device_node *)of_find_compatible_node(NULL, NULL,
-					"mediatek,mt6761-consys");
+					"mediatek,connectivity-combo");
 	if (node) {
 		wifi_irq = irq_of_parse_and_map(node, 0);/* get wifi eint num */
 		ret = request_irq(wifi_irq, mtk_wcn_cmb_sdio_eirq_handler_stub,
@@ -237,4 +241,3 @@ void wmt_export_mtk_wcn_cmb_sdio_disable_eirq(void)
 	mtk_wcn_cmb_sdio_disable_eirq();
 }
 EXPORT_SYMBOL(wmt_export_mtk_wcn_cmb_sdio_disable_eirq);
-
