@@ -178,7 +178,7 @@ static void mtk_wcn_cmb_sdio_request_eirq(msdc_sdio_irq_handler_t irq_handler,
 	mtk_wcn_cmb_sdio_eirq_handler = irq_handler;
 
 	node = (struct device_node *)of_find_compatible_node(NULL, NULL,
-					"mediatek,connectivity-combo");
+					"mediatek,mt6761-consys");
 	if (node) {
 		wifi_irq = irq_of_parse_and_map(node, 0);/* get wifi eint num */
 		ret = request_irq(wifi_irq, mtk_wcn_cmb_sdio_eirq_handler_stub,
