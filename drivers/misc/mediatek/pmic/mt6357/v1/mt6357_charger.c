@@ -424,7 +424,8 @@ static int mt6357_charger_init_setting(struct mt6357_charger *info)
 
 	pmic_set_register_value(PMIC_RG_ULC_DET_EN, 1);
 	/* pmic_set_register_value(PMIC_RG_LOW_ICH_DB, 1); 16ms */
-
+pmic_register_interrupt_callback(INT_WATCHDOG, watchdog_int_handler);
+pmic_enable_interrupt(INT_WATCHDOG, 1, "PMIC");
 
 	return ret;
 }
