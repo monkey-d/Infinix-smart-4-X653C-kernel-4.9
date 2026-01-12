@@ -39,13 +39,17 @@ ifneq ($(KERNELRELEASE),)
     endif
 
     # for gen4m options
-    export CONFIG_MTK_COMBO_WIFI_HIF=axi
-    export MTK_COMBO_CHIP=CONNAC
     ifeq ($(CONFIG_MTK_COMBO_CHIP_CONSYS_6761),y)
+        export CONFIG_MTK_COMBO_WIFI_HIF=sdio
         export WLAN_CHIP_ID=6761
+    else ifeq ($(CONFIG_MTK_COMBO_CHIP_CONSYS_6765),y)
+        export CONFIG_MTK_COMBO_WIFI_HIF=sdio
+        export WLAN_CHIP_ID=6765
     else
+        export CONFIG_MTK_COMBO_WIFI_HIF=axi
         export WLAN_CHIP_ID=6765
     endif
+    export MTK_COMBO_CHIP=CONNAC
     export MTK_ANDROID_WMT=y
 
     # Do build-in for Makefile checking

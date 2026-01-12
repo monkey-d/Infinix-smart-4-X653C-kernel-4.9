@@ -59,7 +59,8 @@ ccflags-y += -DCONFIG_MTK_EMI=1
 endif
 
 ifeq ($(WLAN_CHIP_ID),)
-WLAN_CHIP_ID=$(word 1, $(MTK_COMBO_CHIP))
+# Extract chip ID, stripping CONSYS_ prefix if present
+WLAN_CHIP_ID=$(subst CONSYS_,,$(word 1, $(MTK_COMBO_CHIP)))
 endif
 
 ccflags-y += -DCFG_SUPPORT_DEBUG_FS=0
