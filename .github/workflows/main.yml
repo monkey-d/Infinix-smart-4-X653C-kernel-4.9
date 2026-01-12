@@ -59,23 +59,62 @@ jobs:
         make -j$(nproc --all) zImage-dtb dtbs
         make -j$(nproc --all) dtboimage || true
 
-    # 5. Gather all important files into one output folder
-    - name: Organize Artifacts
+        # 4b. Install modules to a staging directory (optional but recommended)
+        
+    - name: Install Modules
       working-directory: kernel_source
       run: |
+        make INSTALL_MOD_PATH=modules_install modules_install 2>/dev/null || echo "No modules to install or modules_install not configured" 
+
+    # 5. Gather all important files into one output folder
+    - name:  Organize Artifacts
+      working-directory: kernel_source
+      run:  |
         mkdir -p build_artifacts
+        mkdir -p build_artifacts/modules
+        
+        # Copy kernel images
         [ -f arch/arm/boot/zImage-dtb ] && cp arch/arm/boot/zImage-dtb build_artifacts/
         [ -f arch/arm/boot/zImage ] && cp arch/arm/boot/zImage build_artifacts/
-        find arch/arm/boot/dts -name "*.dtb" -exec cp {} build_artifacts/ \;
-        find . -name "dtbo.img" -exec cp {} build_artifacts/ \;
+        
+        # Copy device tree blobs
+        find arch/arm/boot/dts -name "*.dtb" -exec cp {} build_artifacts/ \; 2>/dev/null || true
+        find . -name "dtbo.img" -exec cp {} build_artifacts/ \; 2>/dev/null || true
+        
+        # Copy kernel modules (. ko files)
+        find .  -name "*.ko" -type f !  -path "./build_artifacts/*" -exec cp {} build_artifacts/modules/ \; 2>/dev/null || true
+        
+        # If modules were installed to a directory, copy from there too
+        if [ -d "modules_install" ]; then
+          find modules_install -name "*.ko" -exec cp {} build_artifacts/modules/ \; 2>/dev/null || true
+        fi
+        
+        # Create modules.dep placeholder if modules exist
+        if [ "$(ls -A build_artifacts/modules 2>/dev/null)" ]; then
+          ls build_artifacts/modules/*.ko > build_artifacts/modules/modules. list 2>/dev/null || true
+        fi
+        
+        # Copy build configuration and symbol files
         cp .config build_artifacts/build_config
         [ -f System.map ] && cp System.map build_artifacts/
         [ -f Module.symvers ] && cp Module.symvers build_artifacts/
-        ls -lh build_artifacts/
+        
+        # Show what was collected
+        echo "=== Kernel Images ==="
+        ls -lh build_artifacts/*. zImage* build_artifacts/*Image* 2>/dev/null || echo "No kernel images found"
+        echo ""
+        echo "=== Device Tree Blobs ==="
+        ls -lh build_artifacts/*.dtb build_artifacts/*. img 2>/dev/null || echo "No DTBs found"
+        echo ""
+        echo "=== Kernel Modules ==="
+        ls -lh build_artifacts/modules/ 2>/dev/null || echo "No modules found"
+        echo ""
+        echo "=== Other Files ==="
+        ls -lh build_artifacts/build_config build_artifacts/System.map build_artifacts/Module.symvers 2>/dev/null || true
 
     # 6. Upload the result
     - name: Upload Artifacts
       uses: actions/upload-artifact@v4
-      with:
+      with: 
         name: kernel-build-output
         path: kernel_source/build_artifacts/*
