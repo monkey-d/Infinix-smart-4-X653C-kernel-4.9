@@ -382,7 +382,7 @@ static struct charger_ops mt6357_charger_ops = {
 
 static void watchdog_int_handler(void)
 {
-	pr_notice("mt6357 CHRWDT IRQ\n");
+	pr_debug("mt6357 CHRWDT IRQ\n");
 }
 
 static int mt6357_charger_init_setting(struct mt6357_charger *info)
